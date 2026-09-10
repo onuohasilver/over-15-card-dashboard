@@ -172,7 +172,11 @@
 
   .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent); margin: 2px 0 8px; }
 
-  .legs { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow: hidden; }
+  .legs { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+  .legs::-webkit-scrollbar { width: 4px; }
+  .legs::-webkit-scrollbar-track { background: transparent; }
+  .legs::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 4px; }
+  .legs::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.3); }
   .leg {
     /* column, not row: .leg-row-top and the (collapsed) .leg-note stack
        vertically. A row direction here would make the hidden note compete
@@ -414,7 +418,7 @@ function buildCard(date, day) {
         <div class="legs">${legRows}</div>
         <div class="card-bottom">
           <div class="flavor">Forged from head-to-head, form &amp; goals alone.</div>
-          <div class="cardnum">${meta.booking_code ? '#' + meta.booking_code : ''}</div>
+          <div class="cardnum">${meta.booking_code ? ('#' + meta.booking_code + (meta.share_url ? ' <span style="opacity:.55">&#8599;</span>' : '')) : ''}</div>
         </div>
       </div>
     </div>
@@ -444,11 +448,23 @@ function attachCardInteractions(slot, day) {
   });
 
   slot.querySelectorAll('.leg').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
       if (slot.dataset.dist !== '0') return; // a tap on a neighbour jumps focus instead (see renderCarousel)
+      e.stopPropagation(); // a leg tap toggles its own note -- it must not also fire the card-wide SportyBet-open tap below
       el.classList.toggle('open');
     });
   });
+
+  // Tapping the focused card anywhere outside a leg row opens the booking
+  // code's SportyBet betslip in a new tab -- 'a card is the pick', so the
+  // whole face is the tap target, not a small link buried in a corner.
+  const shareUrl = day.meta && day.meta.share_url;
+  if (shareUrl) {
+    card3d.addEventListener('click', () => {
+      if (slot.dataset.dist !== '0') return; // only the focused card is tappable; a neighbour tap jumps focus instead (handled above, capture phase)
+      window.open(shareUrl, '_blank', 'noopener');
+    });
+  }
 
   const isWon = face.classList.contains('won');
   if (isWon && !day._confettiFired) {
