@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Over 1.5 &middot; Card Collection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05060a;
+    --ink: #f2f3fb;
+    --muted: #8189a3;
+    --muted-2: #545a72;
+    --win: #3ee89c;
+    --loss: #ff5577;
+    --pending: #7ab8ff;
+    --gold: #ffd36b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; overflow-x: hidden; }
+  body {
+    margin: 0; min-height: 100vh; padding: 36px 16px;
+    background: var(--bg);
+    color: var(--ink); font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* wide, not the old 460px column -- the carousel needs real room either
+     side of the focused card for neighbours to peek in without clipping */
+  .wrap { max-width: min(94vw, 960px); width: 100%; margin: 0 auto; }
+
+  /* ============ CAROUSEL ============
+     Every card exists in the strip at once. Moving between days slides the
+     whole track sideways: the focused card is sharp and full-size in the
+     centre, its neighbours sit dimmed, blurred and scaled-down at the edges
+     so the next/previous card is always visibly waiting, not just implied
+     by a dot. */
+  .carousel-viewport {
+    position: relative; overflow: hidden; width: 100%;
+    padding: 10px 0 28px;
+  }
+  .carousel-track {
+    display: flex; align-items: center; gap: 22px;
+    transition: transform .65s cubic-bezier(.16,1,.3,1);
+    will-change: transform;
+  }
+  .carousel-slot {
+    flex: 0 0 auto; width: min(78vw, 340px); transform-origin: center center;
+    transition: opacity .55s ease, filter .55s ease, transform .55s cubic-bezier(.16,1,.3,1);
+  }
+  .carousel-slot[data-dist="0"] { opacity: 1; filter: none; transform: scale(1); z-index: 3; }
+  .carousel-slot[data-dist="1"] { opacity: .35; filter: blur(3px) brightness(.5) saturate(.75); transform: scale(.8); z-index: 2; cursor: pointer; }
+  .carousel-slot[data-dist="2"] { opacity: .12; filter: blur(6px) brightness(.3); transform: scale(.66); z-index: 1; pointer-events: none; }
+  .carousel-slot[data-dist="far"] { opacity: 0; filter: blur(8px); transform: scale(.6); pointer-events: none; }
+
+  .chevron {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 10;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(8,9,15,.55); border: 1px solid rgba(255,255,255,.12);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: var(--ink); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .2s ease;
+  }
+  .chevron.chevron-left { left: 0px; }
+  .chevron.chevron-right { right: 0px; }
+  .chevron:hover:not(:disabled) { background: rgba(255,255,255,.16); }
+  .chevron.chevron-left:hover:not(:disabled) { transform: translateY(-50%) translateX(-2px) scale(1.08); }
+  .chevron.chevron-right:hover:not(:disabled) { transform: translateY(-50%) translateX(2px) scale(1.08); }
+  .chevron:active:not(:disabled) { transform: translateY(-50%) scale(.9); }
+  .chevron:disabled { opacity: .12; cursor: default; }
+  .chevron svg { width: 16px; height: 16px; }
+
+  /* ============ THE CARD ============ */
+  .card-3d {
+    width: 100%; aspect-ratio: 5 / 7; position: relative;
+    transform-style: preserve-3d; transition: transform .12s ease-out;
+    cursor: grab; touch-action: pan-y;
+  }
+  .card-3d.settling { transition: transform .5s cubic-bezier(.16,1,.3,1); }
+  .card-3d.entering { animation: dealIn .6s cubic-bezier(.16,1,.3,1); }
+  @keyframes dealIn { from { opacity: 0; transform: translateY(30px) rotateY(-14deg) scale(.94); } to { opacity: 1; transform: translateY(0) rotateY(0) scale(1); } }
+
+  .card-face {
+    position: absolute; inset: 0; border-radius: 20px; overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06) inset;
+    background: linear-gradient(165deg, #1c2036 0%, #10121d 55%, #0a0b13 100%);
+  }
+  /* rarity border rings */
+  .card-face::before {
+    content: ""; position: absolute; inset: 0; border-radius: 20px; padding: 2px;
+    background: linear-gradient(135deg, #3a3f5c, #1a1c2b 40%, #3a3f5c 60%, #1a1c2b);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; z-index: 5;
+  }
+  .card-face.won::before { background: linear-gradient(135deg, var(--gold), #fff6da 25%, var(--gold) 50%, #fff6da 75%, var(--gold)); background-size: 300% 300%; animation: goldsheen 4s linear infinite; }
+  .card-face.lost::before { background: linear-gradient(135deg, #3a3f5c, #22243a); }
+  .card-face.pending::before { background: linear-gradient(135deg, var(--pending), #223 30%, var(--pending) 60%, #223); background-size: 300% 300%; animation: goldsheen 5s linear infinite; opacity: .7; }
+  @keyframes goldsheen { to { background-position: 300% 0; } }
+
+  /* foil: a metallic gold/black film -- a faint always-drifting ambient
+     layer, plus a soft mouse-tracked spotlight that brightens it locally.
+     No rainbow: this is a monochrome gold foil, like brushed metal catching light. */
+  .foil-gradient {
+    background-image: repeating-linear-gradient(108deg,
+      rgba(0,0,0,0)          0%,
+      rgba(255,215,140,.9)   6%,
+      rgba(255,245,214,1)    9%,
+      rgba(255,215,140,.9)  12%,
+      rgba(0,0,0,0)         20%,
+      rgba(0,0,0,0)         38%,
+      rgba(120,94,34,.7)    44%,
+      rgba(255,215,140,.85) 48%,
+      rgba(120,94,34,.7)    52%,
+      rgba(0,0,0,0)         60%,
+      rgba(0,0,0,0)        100%);
+    background-size: 240% 240%;
+  }
+  .holo-ambient {
+    position: absolute; inset: 0; z-index: 3; pointer-events: none;
+    mix-blend-mode: soft-light; opacity: .22;
+    animation: holoDrift 16s ease-in-out infinite;
+  }
+  .card-face.lost .holo-ambient { opacity: .1; filter: grayscale(1); }
+  @keyframes holoDrift {
+    0%, 100% { background-position: 10% 20%; }
+    50% { background-position: 90% 80%; }
+  }
+  .holo-spot {
+    position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    mix-blend-mode: soft-light; transition: opacity .4s ease;
+    background-position: var(--mx, 50%) var(--my, 50%);
+    -webkit-mask-image: radial-gradient(circle 150px at var(--mx, 50%) var(--my, 50%), #fff 0%, transparent 72%);
+    mask-image: radial-gradient(circle 150px at var(--mx, 50%) var(--my, 50%), #fff 0%, transparent 72%);
+  }
+  .card-face.won .holo-spot { opacity: .55; }
+  .card-face.pending .holo-spot { opacity: .4; }
+  .card-face.lost .holo-spot { opacity: .2; filter: grayscale(1); }
+  .card-face:hover .holo-spot { opacity: .8; }
+  .glare {
+    position: absolute; inset: 0; z-index: 6; pointer-events: none; opacity: 0; transition: opacity .3s;
+    background: radial-gradient(circle 160px at var(--mx,50%) var(--my,50%), rgba(255,255,255,.4), transparent 70%);
+    mix-blend-mode: overlay;
+  }
+  .card-3d:hover .glare { opacity: 1; }
+
+  /* content */
+  .card-content { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; padding: 16px 16px 14px; }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .set-chip {
+    font-size: 8.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+    padding: 3px 8px; border-radius: 999px; color: var(--muted);
+  }
+  .stars { display: flex; gap: 2px; }
+  .stars svg { width: 10px; height: 10px; }
+  .stars .on { fill: var(--gold); }
+  .stars .off { fill: rgba(255,255,255,.14); }
+
+  .card-title { margin-top: 10px; }
+  .card-title .date { font-size: 19px; font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+  .card-title .rel { font-size: 10.5px; color: var(--muted); margin-top: 1px; text-transform: uppercase; letter-spacing: .06em; }
+
+  .medallion-wrap { display: flex; justify-content: center; margin: 10px 0 8px; }
+  .medallion { position: relative; width: 92px; height: 92px; }
+  .medallion svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+  .medallion .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .medallion .pct { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .medallion .lbl { font-size: 6.5px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+
+  .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent); margin: 2px 0 8px; }
+
+  .legs { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow: hidden; }
+  .leg {
+    /* column, not row: .leg-row-top and the (collapsed) .leg-note stack
+       vertically. A row direction here would make the hidden note compete
+       for horizontal space with the row above it, shrinking it. */
+    display: flex; flex-direction: column; align-items: stretch;
+    background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06);
+    border-radius: 9px; padding: 5px 7px; cursor: pointer; transition: background .15s;
+  }
+  .leg:hover { background: rgba(255,255,255,.07); }
+  .badge-pair { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .hex {
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    font-size: 7.5px; font-weight: 800; letter-spacing: .01em;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
+    clip-path: polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);
+  }
+  .crest {
+    width: 22px; height: 22px; object-fit: contain; flex-shrink: 0;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 6px; padding: 2px;
+  }
+  .vs { font-size: 7px; color: var(--muted-2); font-weight: 700; }
+  .leg-mid { flex: 1; min-width: 0; }
+  .leg-time { font-size: 9px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+  .leg-pct { font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; width: 34px; text-align: right; flex-shrink: 0; }
+  .pip-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    width: 25px; flex-shrink: 0; cursor: help;
+  }
+  .pip { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.14); }
+  .pip.hit { background: var(--gold); box-shadow: 0 0 3px rgba(255,211,107,.7); }
+  .card-face.lost .pip.hit { background: var(--muted); box-shadow: none; }
+  .leg-icon { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .leg-icon svg { width: 12px; height: 12px; }
+  .leg-note {
+    font-size: 9.5px; color: var(--muted); line-height: 1.4;
+    max-height: 0; overflow: hidden; transition: max-height .25s ease, margin .25s ease; margin-top: 0;
+    padding-left: 29px;
+  }
+  .leg.open .leg-note { max-height: 60px; margin-top: 4px; }
+  .leg-row-top { display: flex; align-items: center; gap: 7px; width: 100%; }
+
+  .card-bottom { margin-top: 8px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .flavor { font-size: 8px; font-style: italic; color: var(--muted-2); line-height: 1.4; max-width: 62%; }
+  .cardnum { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: var(--muted-2); text-align: right; }
+
+  /* stamp seal for WON / LOST */
+  .seal {
+    position: absolute; top: 38%; left: 50%; z-index: 7; pointer-events: none;
+    transform: translate(-50%,-50%) rotate(-16deg); font-weight: 800; letter-spacing: .1em;
+    padding: 6px 18px; border: 3px solid; border-radius: 8px; font-size: 22px;
+    opacity: 0; text-transform: uppercase; white-space: nowrap;
+  }
+  .seal.show { animation: stampIn .5s cubic-bezier(.16,1,.3,1) .3s forwards; }
+  @keyframes stampIn { from { opacity: 0; transform: translate(-50%,-50%) rotate(-16deg) scale(2.4); } to { opacity: .88; transform: translate(-50%,-50%) rotate(-16deg) scale(1); } }
+  .seal.won { color: var(--win); border-color: var(--win); box-shadow: 0 0 24px rgba(62,232,156,.35); }
+  .seal.lost { color: var(--loss); border-color: var(--loss); box-shadow: 0 0 24px rgba(255,85,119,.3); }
+
+  .live-ribbon {
+    position: absolute; top: 14px; right: -34px; z-index: 7; pointer-events: none;
+    background: var(--pending); color: #05060a; font-size: 9px; font-weight: 800;
+    letter-spacing: .08em; padding: 3px 38px; transform: rotate(35deg);
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+
+  /* pagination + actions */
+  .dots { display: flex; justify-content: center; gap: 6px; margin: 16px 0 4px; flex-wrap: wrap; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.16); cursor: pointer; transition: all .25s; }
+  .dot.active { background: var(--ink); width: 16px; border-radius: 3px; }
+
+  .empty { text-align: center; color: var(--muted-2); padding: 60px 20px; font-size: 13px; }
+
+  #confetti-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+</style>
+</head>
+<body>
+<canvas id="confetti-canvas"></canvas>
+<div class="wrap">
+  <div id="carouselRoot"></div>
+</div>
+
+<script>
+const DATA = {"dates": ["2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13", "2026-09-14"], "days": {"2026-09-10": {"legs": [{"card_date": "2026-09-10", "espn_id": "401915443", "league": "uefa.champions", "match": "Bayern Munich v Bodo/Glimt", "kickoff_local": "2026-09-10 20:00", "own_p": 90, "recorded_at": "2026-09-10T10:35:09.015244+00:00", "status": "WON", "actual_score": "2-0", "actual_total": 2, "note": "\u03bb\u22484.20. Both sides red-hot scoring; never met before.", "home_id": "132", "away_id": "2980", "sample_o15": "18/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (69') at time of marking, live score 2-0"}, {"card_date": "2026-09-10", "espn_id": "401915422", "league": "uefa.champions", "match": "PSV Eindhoven v Shakhtar Donetsk", "kickoff_local": "2026-09-10 17:45", "own_p": 88, "recorded_at": "2026-09-10T10:35:09.015595+00:00", "status": "WON", "actual_score": "1-1", "actual_total": 2, "note": "\u03bb\u22484.05, discounted for PSV's Eredivisie-only scoring form.", "home_id": "148", "away_id": "493", "sample_o15": "19/20"}, {"card_date": "2026-09-10", "espn_id": "401915442", "league": "uefa.champions", "match": "Manchester United v Sabah FK", "kickoff_local": "2026-09-10 20:00", "own_p": 86, "recorded_at": "2026-09-10T10:35:09.015599+00:00", "status": "WON", "actual_score": "4-0", "actual_total": 4, "note": "\u03bb\u22483.38. Man Utd defense leaky lately; Sabah score in bunches.", "home_id": "360", "away_id": "21922", "sample_o15": "16/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (73') at time of marking, live score 4-0"}, {"card_date": "2026-09-10", "espn_id": "401915444", "league": "uefa.champions", "match": "Fenerbahce v AS Roma", "kickoff_local": "2026-09-10 17:45", "own_p": 84, "recorded_at": "2026-09-10T10:35:09.015600+00:00", "status": "WON", "actual_score": "1-1", "actual_total": 2, "note": "\u03bb\u22483.35. Fenerbahce leaky at home; Roma leakier away than overall record suggests.", "home_id": "436", "away_id": "104", "sample_o15": "18/20"}, {"card_date": "2026-09-10", "espn_id": "401915441", "league": "uefa.champions", "match": "Como v RB Leipzig", "kickoff_local": "2026-09-10 20:00", "own_p": 80, "recorded_at": "2026-09-10T10:35:09.015602+00:00", "status": "WON", "actual_score": "3-1", "actual_total": 4, "note": "\u03bb\u22483.25. Como tight at home (60% o1.5), offset by Leipzig's current leaky defense.", "home_id": "2572", "away_id": "11420", "sample_o15": "16/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (71') at time of marking, live score 3-1"}], "meta": {"booking_code": "YDQVHT", "combined_chance": 45.8, "coverage": "43 fixtures on the calendar day. 28 had already kicked off by the time the card was built (11:24 WAT), leaving 15 still to play (13 modelable). All 15 were checked against SportyBet's market feed; 8 had a workable 1.5 line and were researched. 5 made the card.", "date": "2026-09-10", "recorded_at": "2026-09-10T12:27:23.020370+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=YDQVHT"}}, "2026-09-11": {"legs": [{"card_date": "2026-09-11", "espn_id": "401874540", "league": "den.1", "match": "F.C. K\u00f8benhavn v AC Horsens", "kickoff_local": "2026-09-11 18:00", "own_p": 88, "note": "away sample thin (n=3), H2H stale (2020-2023) - discounted from raw 92.9%", "home_id": "909", "away_id": "3585", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251840+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875611", "league": "ned.1", "match": "AZ Alkmaar v Willem II", "kickoff_local": "2026-09-11 19:00", "own_p": 88, "note": "Willem II missing #1 keeper Didillon; worst attack in league", "home_id": "140", "away_id": "156", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251971+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401885116", "league": "ger.2", "match": "1. FC N\u00fcrnberg v Hannover 96", "kickoff_local": "2026-09-11 17:30", "own_p": 87, "note": "H2H 5/5 over 1.5, avg 3.6; N\u00fcrnberg scored 4,4,3 in last three", "home_id": "269", "away_id": "2428", "sample_o15": "8/10", "recorded_at": "2026-09-10T12:54:17.251974+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875938", "league": "ned.2", "match": "Jong Ajax v RKC Waalwijk", "kickoff_local": "2026-09-11 19:00", "own_p": 85, "note": "reserve side, thin news coverage - discounted from raw 88.4%", "home_id": "10597", "away_id": "155", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251976+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875942", "league": "ned.2", "match": "FC Eindhoven v FC Dordrecht", "kickoff_local": "2026-09-11 19:00", "own_p": 82, "note": "2 of last 5 H2H were 0-0 - discounted from raw 85.9%", "home_id": "3732", "away_id": "4426", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251980+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "Q8K8WD", "combined_chance": 47.0, "coverage": "69 fixtures on the day, 63 modelable. 8 candidates cleared 75% and were checked against SportyBet's market and researched; 3 cut on team-news/data-quality grounds, 5 made the card.", "date": "2026-09-11", "recorded_at": "2026-09-10T12:54:17.254573+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=Q8K8WD"}}, "2026-09-12": {"legs": [{"card_date": "2026-09-12", "espn_id": "401900921", "league": "ksa.1", "match": "Al Khaleej v Al Nassr", "kickoff_local": "2026-09-12 19:00", "own_p": 91, "note": "H2H 5/5 avg 4.0; Al Khaleej winless & leaky (11 conceded/5), Al Nassr elite away", "home_id": "21829", "away_id": "817", "sample_o15": "8/10", "recorded_at": "2026-09-10T12:54:17.304129+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884796", "league": "ger.1", "match": "SC Freiburg v Borussia M\u00f6nchengladbach", "kickoff_local": "2026-09-12 14:30", "own_p": 90, "note": "Freiburg form team in Bundesliga (17-4 GD/5 games); Gladbach defensive crisis", "home_id": "126", "away_id": "268", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.304287+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884797", "league": "ger.1", "match": "TSG Hoffenheim v VfB Stuttgart", "kickoff_local": "2026-09-12 14:30", "own_p": 90, "note": "Hoffenheim leaky/back-to-back losses (goals both ways); Stuttgart off 4-1 win", "home_id": "7911", "away_id": "134", "sample_o15": "7/10", "recorded_at": "2026-09-10T12:54:17.304290+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401882880", "league": "esp.1", "match": "Real Madrid v Rayo Vallecano", "kickoff_local": "2026-09-12 20:00", "own_p": 87, "note": "Real Madrid missing 3 defenders (Militao, Mendy, Asencio doubt); Rayo attacking well", "home_id": "86", "away_id": "101", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.304292+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884795", "league": "ger.1", "match": "FC Augsburg v Bayer Leverkusen", "kickoff_local": "2026-09-12 14:30", "own_p": 86, "note": "H2H 5/5 but tight (avg 2.4); both sides chaotic/high-scoring recently", "home_id": "3841", "away_id": "131", "sample_o15": "9/10", "recorded_at": "2026-09-10T12:54:17.304293+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "KX36U4", "combined_chance": 55.1, "coverage": "234 fixtures on the day, 205 modelable. 11 candidates cleared 75% and were checked against SportyBet's market and researched; 6 cut (2 on current-season news contradicting the historical average, 1 on a date/division conflict, 3 narrowly below the top 5), 5 made the card.", "date": "2026-09-12", "recorded_at": "2026-09-10T12:54:17.304609+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=KX36U4"}}, "2026-09-13": {"legs": [{"card_date": "2026-09-13", "espn_id": "401902918", "league": "eng.w.1", "match": "Liverpool v Tottenham Hotspur", "kickoff_local": "2026-09-13 14:00", "own_p": 91, "note": "WSL; both scored heavily in openers, H2H 5/5 avg 3.2, no confirmed injuries", "home_id": "19971", "away_id": "20062", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.468394+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401885118", "league": "ger.2", "match": "1. FC Heidenheim v Holstein Kiel", "kickoff_local": "2026-09-13 12:30", "own_p": 91, "note": "Kiel missing 2 CBs + a forward; Heidenheim already averaging 5.25 combined goals/game", "home_id": "6418", "away_id": "7884", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468705+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "761802", "league": "usa.1", "match": "FC Cincinnati v Charlotte FC", "kickoff_local": "2026-09-13 00:30", "own_p": 90, "note": "playoff-race stakes both sides, Charlotte missing starting LB", "home_id": "18267", "away_id": "21300", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.468710+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401875605", "league": "ned.1", "match": "PSV Eindhoven v Sparta Rotterdam", "kickoff_local": "2026-09-13 19:00", "own_p": 88, "note": "PSV missing 2 forwards + 3-day CL turnaround - discounted from raw 90.8%", "home_id": "148", "away_id": "151", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468712+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401885439", "league": "por.1", "match": "Benfica v Gil Vicente", "kickoff_local": "2026-09-13 18:00", "own_p": 88, "note": "Benfica fully fit, GF18-GA5 in 5 games, H2H 5/5 avg 3.6", "home_id": "1929", "away_id": "3699", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468714+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "QNMZ22", "combined_chance": 57.7, "coverage": "219 fixtures on the day, 200 modelable. 13 candidates cleared 75% and were checked against SportyBet's market and researched; 8 cut (1 for no market, 1 for missing goalkeeper market, 6 narrowly below the top 5 or discounted on team news), 5 made the card.", "date": "2026-09-13", "recorded_at": "2026-09-10T19:54:30.478386+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=QNMZ22"}}, "2026-09-14": {"legs": [{"card_date": "2026-09-14", "espn_id": "401882877", "league": "esp.1", "match": "Villarreal v Real Betis", "kickoff_local": "2026-09-14 20:00", "own_p": 91, "note": "Villarreal winless & leaky, Betis red-hot (beat Real Madrid, won away in CL)", "home_id": "102", "away_id": "244", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.530483+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401874966", "league": "ita.1", "match": "Internazionale v Udinese", "kickoff_local": "2026-09-14 19:45", "own_p": 88, "note": "Udinese missing starting CB + a midfielder (surgery) vs Inter's in-form attack", "home_id": "110", "away_id": "118", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.530629+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401873992", "league": "swe.1", "match": "Djurg\u00e5rden v GAIS", "kickoff_local": "2026-09-14 18:00", "own_p": 87, "note": "GAIS keeper in concussion-protocol doubt; Djurg\u00e5rden strong home scoring", "home_id": "2339", "away_id": "8222", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530632+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401843435", "league": "nor.1", "match": "Bodo/Glimt v Sandefjord", "kickoff_local": "2026-09-14 18:00", "own_p": 84, "note": "Bodo played Bayern away Thu (rotation risk) - discounted slightly from raw 85.3%", "home_id": "2980", "away_id": "3279", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530634+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401874021", "league": "swe.1", "match": "IK Sirius v Degerfors", "kickoff_local": "2026-09-14 18:00", "own_p": 83, "note": "Degerfors league's worst attack but Sirius leaky at back; H2H 3-1-1 Sirius", "home_id": "8547", "away_id": "20856", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530636+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "KEKNB2", "combined_chance": 48.6, "coverage": "47 fixtures on the day (a Monday), 44 modelable. 8 candidates cleared 75% and were checked against SportyBet's market; 2 cut for having no 1.5 market at all (San Diego v Philadelphia, Jong PSV v Jong AZ), 1 cut on team news (Torino v Roma - Roma's suffocating defense), 5 made the card.", "date": "2026-09-14", "recorded_at": "2026-09-10T19:54:30.531005+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=KEKNB2"}}}, "summary": {"settled": 5, "wins": 5, "hit_rate": 100.0, "pending": 20, "cards_won": 1, "cards_lost": 0}, "calibration": [{"bucket": "90-100%", "n": 1, "hits": 1, "actual_pct": 100.0, "avg_predicted_pct": 90.0}, {"bucket": "85-89%", "n": 2, "hits": 2, "actual_pct": 100.0, "avg_predicted_pct": 87.0}, {"bucket": "80-84%", "n": 2, "hits": 2, "actual_pct": 100.0, "avg_predicted_pct": 82.0}]};
+let idx = 0;
+
+function fmtPct(p) { return (Math.round(p * 10) / 10) + '%'; }
+function code3(name) {
+  const stop = new Set(['fc','cf','sc','ac','ca','rc','cd','de','as','fk','the','united','city','town']);
+  const words = name.replace(/[^a-zA-Z\s\/]/g,'').split(/\s+/).filter(w => w && !stop.has(w.toLowerCase()));
+  if (!words.length) return name.replace(/[^a-zA-Z]/g,'').slice(0,3).toUpperCase() || '???';
+  const acronym = words.find(w => w === w.toUpperCase() && /[A-Z]/.test(w) && w.length >= 3 && w.length <= 4);
+  if (acronym) return acronym.slice(0,3).toUpperCase();
+  if (words.length === 1) return words[0].slice(0,3).toUpperCase();
+  return words.map(w => w[0]).join('').slice(0,3).toUpperCase();
+}
+// ESPN hosts a crest per team id; fall back to the 3-letter hex badge if a
+// team has none (lower-league sides, reserve/youth squads) or the image 404s.
+window.__crestFallback = function(img, code) {
+  const div = document.createElement('div');
+  div.className = 'hex';
+  div.textContent = code;
+  img.replaceWith(div);
+};
+function crestHtml(id, name) {
+  const code = code3(name);
+  if (!id) return `<div class="hex">${code}</div>`;
+  return `<img class="crest" src="https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png" alt="${name}" loading="lazy" onerror="window.__crestFallback(this,'${code}')">`;
+}
+// "18/20" -> a 5-wide grid of dots, the first `hits` lit up. A quick visual
+// read of the empirical last-10 sample instead of asking the eye to parse text.
+function pipGridHtml(sampleStr) {
+  if (!sampleStr) return '<div class="pip-grid"></div>';
+  const [hitsStr, totalStr] = sampleStr.split('/');
+  const hits = parseInt(hitsStr, 10) || 0, total = parseInt(totalStr, 10) || 0;
+  let dots = '';
+  for (let i = 0; i < total; i++) dots += `<span class="pip ${i < hits ? 'hit' : ''}"></span>`;
+  return `<div class="pip-grid" title="${sampleStr} of both sides' last 10 matches went over 1.5">${dots}</div>`;
+}
+// Every date in this app was assigned in WAT (UTC+1) -- fixtures.py and
+// sportybet_markets.py both default to that offset throughout. "Today"
+// has to mean the same thing here, not whatever timezone the viewer's
+// browser happens to be in, or the focused card and its own "Today" label
+// could disagree with each other.
+function todayWAT() {
+  return new Date(Date.now() + 3600000).toISOString().slice(0, 10);
+}
+function relDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z').getTime();
+  const today = new Date(todayWAT() + 'T00:00:00Z').getTime();
+  const diff = Math.round((d - today) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === -1) return 'Yesterday';
+  if (diff === 1) return 'Tomorrow';
+  return diff < 0 ? `${-diff} days ago` : `in ${diff} days`;
+}
+// Focus today's card by default. Dates are sorted ascending (past -> left,
+// future -> right), so "today" is rarely index 0 once both past and future
+// cards exist. If today itself has no card logged, focus whichever logged
+// date is closest to it rather than falling back to an arbitrary end.
+function initialIdx(dates) {
+  const today = todayWAT();
+  const exact = dates.indexOf(today);
+  if (exact !== -1) return exact;
+  const todayMs = new Date(today + 'T00:00:00Z').getTime();
+  let best = 0, bestDiff = Infinity;
+  dates.forEach((d, i) => {
+    const diff = Math.abs(new Date(d + 'T00:00:00Z').getTime() - todayMs);
+    if (diff < bestDiff) { bestDiff = diff; best = i; }
+  });
+  return best;
+}
+function starRow(avgP) {
+  let n = 1;
+  if (avgP >= 88) n = 5; else if (avgP >= 84) n = 4; else if (avgP >= 80) n = 3; else if (avgP >= 75) n = 2;
+  let out = '';
+  for (let i = 0; i < 5; i++) {
+    out += `<svg viewBox="0 0 24 24" class="${i < n ? 'on' : 'off'}"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+  }
+  return out;
+}
+const ICONS = {
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  cross: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`,
+  left: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+  right: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
+};
+
+function ringSvg(pct, color) {
+  const r = 40, c = 2 * Math.PI * r;
+  const off = c - (pct/100) * c;
+  return `<svg viewBox="0 0 92 92">
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+    <circle class="ring-fg" cx="46" cy="46" r="${r}" fill="none" stroke="${color}" stroke-width="7"
+      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c}" data-off="${off}"
+      style="transition: stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1);"/>
+  </svg>`;
+}
+
+function buildCard(date, day) {
+  const legs = day.legs, meta = day.meta || {};
+  const allSettled = legs.every(l => l.status !== 'pending');
+  const wins = legs.filter(l => l.status === 'WON').length;
+  const rarity = allSettled ? (wins === legs.length ? 'won' : 'lost') : 'pending';
+  const avgP = legs.reduce((a,l) => a + l.own_p, 0) / legs.length;
+  const combined = meta.combined_chance != null ? meta.combined_chance : legs.reduce((a,l)=>a*(l.own_p/100),1)*100;
+  const ringColor = rarity === 'won' ? 'var(--win)' : rarity === 'lost' ? 'var(--loss)' : 'var(--pending)';
+
+  const legRows = legs.map((l, i) => {
+    const parts = l.match.split(/\s+v\s+/i);
+    const home = parts[0] || l.match, away = parts[1] || '';
+    const icon = l.status === 'WON' ? ICONS.check : l.status === 'LOST' ? ICONS.cross : ICONS.clock;
+    const iconColor = l.status === 'WON' ? 'var(--win)' : l.status === 'LOST' ? 'var(--loss)' : 'var(--muted-2)';
+    const scoreText = l.actual_score ? l.actual_score : l.kickoff_local.split(' ')[1] || '';
+    return `
+    <div class="leg" data-i="${i}">
+      <div class="leg-row-top">
+        <div class="badge-pair">
+          ${crestHtml(l.home_id, home)}
+          <span class="vs">v</span>
+          ${crestHtml(l.away_id, away)}
+        </div>
+        <div class="leg-mid"><div class="leg-time">${scoreText}</div></div>
+        <div class="leg-pct">${l.own_p}%</div>
+        ${pipGridHtml(l.sample_o15)}
+        <div class="leg-icon" style="color:${iconColor}">${icon}</div>
+      </div>
+      ${l.note ? `<div class="leg-note">${l.note}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const seal = rarity === 'won' ? `<div class="seal won show">WON</div>` : rarity === 'lost' ? `<div class="seal lost show">LOST</div>` : '';
+  const ribbon = rarity === 'pending' ? `<div class="live-ribbon">IN PLAY</div>` : '';
+
+  return `
+  <div class="card-3d settling">
+    <div class="card-face ${rarity}">
+      <div class="holo-ambient foil-gradient"></div>
+      <div class="holo-spot foil-gradient"></div>
+      <div class="glare"></div>
+      ${seal}
+      ${ribbon}
+      <div class="card-content">
+        <div class="card-top">
+          <span class="set-chip">Over 1.5 &middot; ${legs.length} legs</span>
+          <div class="stars">${starRow(avgP)}</div>
+        </div>
+        <div class="card-title">
+          <div class="date">${date}</div>
+          <div class="rel">${relDay(date)}</div>
+        </div>
+        <div class="medallion-wrap">
+          <div class="medallion">
+            ${ringSvg(combined, ringColor)}
+            <div class="center"><div class="pct">${fmtPct(combined).replace('.0%','%')}</div><div class="lbl">Accumulator</div></div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="legs">${legRows}</div>
+        <div class="card-bottom">
+          <div class="flavor">Forged from head-to-head, form &amp; goals alone.</div>
+          <div class="cardnum">${meta.booking_code ? '#' + meta.booking_code : ''}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function attachCardInteractions(slot, day) {
+  const card3d = slot.querySelector('.card-3d');
+  const face = slot.querySelector('.card-face');
+  if (!card3d || !face) return;
+
+  function setTilt(x, y, rect) {
+    const px = (x - rect.left) / rect.width, py = (y - rect.top) / rect.height;
+    const rx = (py - .5) * -14, ry = (px - .5) * 14;
+    card3d.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+    face.style.setProperty('--mx', (px*100) + '%');
+    face.style.setProperty('--my', (py*100) + '%');
+  }
+  card3d.addEventListener('mousemove', e => {
+    if (slot.dataset.dist !== '0') return; // only the focused card tilts; neighbours are static previews
+    card3d.classList.remove('settling');
+    setTilt(e.clientX, e.clientY, card3d.getBoundingClientRect());
+  });
+  card3d.addEventListener('mouseleave', () => {
+    card3d.classList.add('settling');
+    card3d.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+  });
+
+  slot.querySelectorAll('.leg').forEach(el => {
+    el.addEventListener('click', () => {
+      if (slot.dataset.dist !== '0') return; // a tap on a neighbour jumps focus instead (see renderCarousel)
+      el.classList.toggle('open');
+    });
+  });
+
+  const isWon = face.classList.contains('won');
+  if (isWon && !day._confettiFired) {
+    day._confettiFired = true;
+    setTimeout(fireConfetti, 500);
+  }
+}
+
+// getBoundingClientRect() reports the *visually rendered* box, which
+// includes the CSS transform: scale(...) every non-focused slot carries for
+// the dim/blur peek effect. Reading it off whichever slot happens to sit at
+// children[0] silently shrinks this measurement the moment you're no longer
+// on the very first card, corrupting every offset after that. getComputedStyle
+// reports the layout width transforms don't touch, so use that instead --
+// and read it off the currently-FOCUSED slot specifically, not an arbitrary one.
+function slotLayoutWidth(slot) {
+  return parseFloat(getComputedStyle(slot).width) || 0;
+}
+
+function trackStep() {
+  const track = document.getElementById('track');
+  const gap = parseFloat(getComputedStyle(track).columnGap) || 22;
+  return slotLayoutWidth(track.children[0]) + gap;
+}
+
+function positionTrack(instant) {
+  const viewport = document.getElementById('viewport');
+  const track = document.getElementById('track');
+  const slots = [...track.children];
+  if (!slots.length) return;
+  const step = trackStep();
+  const slotWidth = slotLayoutWidth(slots[idx] || slots[0]);
+  const viewportWidth = parseFloat(getComputedStyle(viewport).width) || viewport.getBoundingClientRect().width;
+  const offset = (viewportWidth - slotWidth) / 2 - idx * step;
+
+  if (instant) track.style.transition = 'none';
+  track.style.transform = `translateX(${offset}px)`;
+  if (instant) { void track.offsetHeight; track.style.transition = ''; }
+
+  slots.forEach((slot, i) => {
+    const d = Math.abs(i - idx);
+    slot.dataset.dist = d <= 2 ? String(d) : 'far';
+  });
+
+  const dates = DATA.dates;
+  const leftBtn = document.getElementById('leftBtn'), rightBtn = document.getElementById('rightBtn');
+  if (leftBtn) leftBtn.disabled = idx <= 0;
+  if (rightBtn) rightBtn.disabled = idx >= dates.length - 1;
+  document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+
+  if (!instant) {
+    // ring fills on the newly-focused card animate in as it settles into place
+    const focusedSlot = slots[idx];
+    requestAnimationFrame(() => {
+      focusedSlot.querySelectorAll('.ring-fg').forEach(c => {
+        const off = c.getAttribute('data-off');
+        c.style.strokeDashoffset = off;
+      });
+    });
+  }
+}
+
+function goTo(newIdx) {
+  const dates = DATA.dates;
+  if (newIdx < 0 || newIdx >= dates.length || newIdx === idx) return;
+  idx = newIdx;
+  positionTrack(false);
+}
+
+let firstRender = true;
+
+function renderCarousel() {
+  const dates = DATA.dates;
+  const root = document.getElementById('carouselRoot');
+  if (!dates.length) {
+    root.innerHTML = '<div class="empty">No cards logged yet.<br>Build one, then run <code>track.py record</code>.</div>';
+    return;
+  }
+  idx = initialIdx(dates);
+
+  root.innerHTML = `
+    <div class="carousel-viewport" id="viewport">
+      <div class="carousel-track" id="track">
+        ${dates.map((d, i) => `<div class="carousel-slot" data-i="${i}">${buildCard(d, DATA.days[d])}</div>`).join('')}
+      </div>
+      <button class="chevron chevron-left" id="leftBtn">${ICONS.left}</button>
+      <button class="chevron chevron-right" id="rightBtn">${ICONS.right}</button>
+    </div>
+    <div class="dots">${dates.map((d, i) => `<div class="dot" data-i="${i}"></div>`).join('')}</div>`;
+
+  const track = document.getElementById('track');
+  [...track.children].forEach((slot, i) => {
+    const day = DATA.days[dates[i]];
+    attachCardInteractions(slot, day);
+    // tapping a dimmed neighbour brings it into focus instead of letting its
+    // (currently inert) inner controls fire
+    slot.addEventListener('click', (e) => {
+      if (i !== idx) {
+        // stop here: this click is "bring this card into focus", full stop --
+        // don't also let it fall through to a leg's own open/close toggle
+        // underneath the tap, which would fire once dist flips to '0' below.
+        e.stopPropagation();
+        goTo(i);
+      }
+    }, true);
+  });
+
+  document.getElementById('leftBtn').onclick = () => goTo(idx - 1);
+  document.getElementById('rightBtn').onclick = () => goTo(idx + 1);
+  document.querySelectorAll('.dot').forEach(d => {
+    d.onclick = () => goTo(parseInt(d.dataset.i, 10));
+  });
+
+  positionTrack(true);
+  // Guessing "layout has probably settled by now" with rAF/load timeouts is
+  // fragile -- a scrollbar appearing once 5 cards' crest images finish
+  // loading, or a late web-font swap, changes the viewport's real width
+  // *after* that first measurement, and the focused card ends up centered
+  // against a width that's no longer true. A ResizeObserver reports the
+  // viewport's actual size whenever it actually changes, including the very
+  // first layout pass, so re-run the same instant recentre every time --
+  // it's cheap and idempotent, and it's the correct tool for this rather
+  // than another timing guess.
+  const viewportEl = document.getElementById('viewport');
+  if (window.ResizeObserver) {
+    if (window.__carouselRO) window.__carouselRO.disconnect();
+    window.__carouselRO = new ResizeObserver(() => positionTrack(true));
+    window.__carouselRO.observe(viewportEl);
+  }
+
+  // one-time "dealt onto the table" flourish for the very first card shown
+  if (firstRender) {
+    firstRender = false;
+    const focusedCard = track.children[idx]?.querySelector('.card-3d');
+    if (focusedCard) {
+      focusedCard.classList.add('entering');
+      focusedCard.addEventListener('animationend', () => focusedCard.classList.remove('entering'), { once: true });
+    }
+  }
+  track.querySelectorAll('.ring-fg').forEach(c => {
+    const off = c.getAttribute('data-off');
+    requestAnimationFrame(() => { c.style.strokeDashoffset = off; });
+  });
+}
+
+function fireConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  const colors = ['#ffd36b', '#3ee89c', '#7ab8ff', '#ff5577', '#ffffff'];
+  const originX = canvas.width/2, originY = canvas.height*0.35;
+  const pieces = Array.from({length: 70}, () => {
+    const angle = Math.random()*Math.PI*2, speed = 2 + Math.random()*6;
+    return { x: originX, y: originY, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 2,
+      size: 3 + Math.random()*4, rot: Math.random()*360, vr: (Math.random()-.5)*12,
+      color: colors[Math.floor(Math.random()*colors.length)] };
+  });
+  let frame = 0;
+  function loop() {
+    frame++;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    let alive = false;
+    for (const p of pieces) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.rot += p.vr;
+      if (frame < 200) alive = true;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+      ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, 1 - frame/200);
+      ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*.6);
+      ctx.restore();
+    }
+    if (alive) requestAnimationFrame(loop); else ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+  loop();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') goTo(idx - 1);
+  if (e.key === 'ArrowRight') goTo(idx + 1);
+});
+let tsx = null, tsy = null;
+document.body.addEventListener('touchstart', e => { tsx = e.touches[0].clientX; tsy = e.touches[0].clientY; });
+document.body.addEventListener('touchend', e => {
+  if (tsx == null) return;
+  const dx = e.changedTouches[0].clientX - tsx, dy = e.changedTouches[0].clientY - tsy;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+    if (dx < 0) goTo(idx + 1); else goTo(idx - 1);
+  }
+  tsx = null; tsy = null;
+});
+window.addEventListener('resize', () => {
+  const c = document.getElementById('confetti-canvas'); c.width = innerWidth; c.height = innerHeight;
+  positionTrack(true);
+});
+window.addEventListener('load', () => positionTrack(true));
+
+renderCarousel();
+</script>
+</body>
+</html>
