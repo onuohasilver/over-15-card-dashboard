@@ -883,7 +883,7 @@ function setupMarketToggle() {
     bounds();
     dragging = true;
     ball.classList.add('dragging');
-    ball.setPointerCapture(e.pointerId);
+    if (ball.setPointerCapture) ball.setPointerCapture(e.pointerId);
     dragStartClientX = e.clientX;
     dragStartBallX = x;
     cancelAnimationFrame(rafId);
