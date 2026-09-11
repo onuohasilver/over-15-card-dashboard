@@ -165,6 +165,15 @@
 
   .medallion-wrap { display: flex; justify-content: center; margin: 10px 0 8px; }
   .medallion { position: relative; width: 92px; height: 92px; }
+  /* the booking code now lives here -- the center of the card, where the
+     eye lands first -- instead of the accumulator percentage, since a
+     shared card is meant to be booked, and the code is what makes that
+     possible. The ring itself becomes a full decorative frame rather than
+     a progress indicator, since a code has no "percentage" to show. */
+  .medallion .code-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 16.5px; font-weight: 700;
+    letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums;
+  }
   .medallion svg { transform: rotate(-90deg); width: 100%; height: 100%; }
   .medallion .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .medallion .pct { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
@@ -222,6 +231,27 @@
   .card-bottom { margin-top: 8px; display: flex; justify-content: space-between; align-items: flex-end; }
   .flavor { font-size: 8px; font-style: italic; color: var(--muted-2); line-height: 1.4; max-width: 62%; }
   .cardnum { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: var(--muted-2); text-align: right; }
+  /* the accumulator percentage moved down here, swapping with the booking
+     code -- still readable, just no longer the star of the card */
+  .pct-small {
+    font-size: 9.5px; font-weight: 700; color: var(--muted-2);
+    font-variant-numeric: tabular-nums; text-align: right; display: flex;
+    align-items: center; gap: 5px; justify-content: flex-end;
+  }
+  .pct-small b { color: var(--ink); font-size: 11px; }
+
+  /* a compact share-to-X button, sitting just under the (now prominent)
+     booking code so "here's the code" and "post it" are the same gesture */
+  .share-btn {
+    display: flex; align-items: center; gap: 5px; margin: 6px auto 0;
+    font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 999px; padding: 4px 11px 4px 8px; cursor: pointer; width: fit-content;
+    transition: background .2s ease, color .2s ease, transform .15s ease;
+  }
+  .share-btn:hover { background: rgba(255,255,255,.13); color: var(--ink); }
+  .share-btn:active { transform: scale(.94); }
+  .share-btn svg { width: 12px; height: 12px; }
   .streak-badge {
     display: inline-flex; align-items: center; gap: 5px; font-style: normal;
     font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
@@ -527,6 +557,7 @@ const ICONS = {
   clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`,
   left: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
   right: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
+  xLogo: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
 };
 
 function ringSvg(pct, color) {
@@ -594,15 +625,19 @@ function buildCard(date, day) {
         </div>
         <div class="medallion-wrap">
           <div class="medallion">
-            ${ringSvg(combined, ringColor)}
-            <div class="center"><div class="pct">${fmtPct(combined).replace('.0%','%')}</div><div class="lbl">Accumulator</div></div>
+            ${ringSvg(100, ringColor)}
+            <div class="center">
+              <div class="code-value">${meta.booking_code || '\u2014'}</div>
+              <div class="lbl">Booking Code</div>
+            </div>
           </div>
         </div>
+        ${meta.booking_code ? `<button class="share-btn" type="button">${ICONS.xLogo} Share</button>` : ''}
         <div class="divider"></div>
         <div class="legs">${legRows}</div>
         <div class="card-bottom">
           <div class="flavor">${(DATA.summary.current_streak >= 2 && rarity !== 'lost') ? `<span class="streak-badge"><span class="flame">&#128293;</span>${DATA.summary.current_streak}-CARD STREAK</span>` : 'Forged from head-to-head, form &amp; goals alone.'}</div>
-          <div class="cardnum">${meta.booking_code ? ('#' + meta.booking_code + (meta.share_url ? ' <span style="opacity:.55">&#8599;</span>' : '')) : ''}</div>
+          <div class="pct-small"><b>${fmtPct(combined).replace('.0%','%')}</b> chance</div>
         </div>
       </div>
     </div>
@@ -638,6 +673,25 @@ function attachCardInteractions(slot, day) {
       el.classList.toggle('open');
     });
   });
+
+  // Share this specific card to X/Twitter -- a short, self-contained post
+  // (market, date, leg count, combined chance, the booking code) rather
+  // than a screenshot, so the code itself is copy-pasteable from the tweet.
+  const shareBtn = slot.querySelector('.share-btn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // must not also trigger the whole-card "open slip" tap below
+      const m = day.meta || {};
+      const pctText = slot.querySelector('.pct-small b')?.textContent || '';
+      const lines = [
+        `${m.market_label || 'Over 1.5'} card \u2014 ${day.date} (${day.legs.length} legs, ${pctText} combined)`,
+        `Booking code: ${m.booking_code}`,
+      ];
+      let intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(lines.join('\n'))}`;
+      if (m.share_url) intent += `&url=${encodeURIComponent(m.share_url)}`;
+      window.open(intent, '_blank', 'noopener');
+    });
+  }
 
   // Tapping the focused card anywhere outside a leg row opens the booking
   // code's SportyBet betslip in a new tab -- 'a card is the pick', so the
