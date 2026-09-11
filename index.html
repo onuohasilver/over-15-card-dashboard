@@ -367,6 +367,13 @@
       inset 0 -5px 9px rgba(0,0,0,.22),
       inset 0 3px 6px rgba(255,255,255,.65);
   }
+  /* the spin wrapper is what actually rotates -- pentagons and the seam
+     pattern live inside it, so they sweep round together as one rigid
+     face when the ball rolls. The shine highlight deliberately lives
+     OUTSIDE this wrapper: a real specular highlight stays put relative to
+     the light source regardless of how the sphere spins, so rotating it
+     along with the texture would look wrong, not more real. */
+  .mkt-ball-spin { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
   .mkt-ball .pentagon {
     position: absolute; background: #1a1b23;
     clip-path: polygon(50% 0%, 95% 35%, 78% 90%, 22% 90%, 5% 35%);
@@ -395,30 +402,6 @@
     opacity: .75; pointer-events: none;
   }
 
-  /* the elastic itself: anchored to wherever you actually grabbed the ball
-     (not a fixed track edge), so it stretches the way a real strap does --
-     between two points, not out of a wall socket. A woven-ribbon texture
-     (alternating colour/highlight stripes running its length, like the
-     ribbing on an elastic waistband) instead of a flat glowing line, plus a
-     soft cloth-like shadow so it reads as material with give, not a laser. */
-  .mkt-band {
-    position: absolute; top: 50%; z-index: 1; pointer-events: none;
-    border-radius: 4px; opacity: 0; transform: translateY(-50%);
-    background-image:
-      repeating-linear-gradient(90deg,
-        var(--mkt-color, var(--pending)) 0px, var(--mkt-color, var(--pending)) 3px,
-        rgba(255,255,255,.55) 3px, rgba(255,255,255,.55) 4.2px,
-        var(--mkt-color, var(--pending)) 4.2px, var(--mkt-color, var(--pending)) 7px);
-    background-size: 7px 100%;
-    box-shadow: 0 3px 6px rgba(0,0,0,.4), 0 0 10px var(--mkt-glow, rgba(122,184,255,.45));
-    transition: opacity .3s ease;
-    /* both ends fade rather than cut off square -- reads as material
-       narrowing where it's held, not a rectangle with hard edges */
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
-    mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
-  }
-  .mkt-band.show { opacity: .85; }
-
   .mkt-toggle.market-over15 { --mkt-color: var(--pending); --mkt-glow: rgba(122,184,255,.7); }
   .mkt-toggle.market-dc12 { --mkt-color: var(--gold); --mkt-glow: rgba(255,211,107,.7); }
 
@@ -435,14 +418,15 @@
         <div class="mkt-label mkt-label-left" id="mktLabelLeft">Over 1.5</div>
         <div class="mkt-label mkt-label-right" id="mktLabelRight">Double Chance</div>
       </div>
-      <div class="mkt-band" id="mktBand"></div>
       <div class="mkt-ball" id="mktBall">
         <div class="mkt-ball-face">
-          <div class="mkt-ball-seam"></div>
-          <div class="pentagon p1"></div>
-          <div class="pentagon p2"></div>
-          <div class="pentagon p3"></div>
-          <div class="pentagon p4"></div>
+          <div class="mkt-ball-spin" id="mktBallSpin">
+            <div class="mkt-ball-seam"></div>
+            <div class="pentagon p1"></div>
+            <div class="pentagon p2"></div>
+            <div class="pentagon p3"></div>
+            <div class="pentagon p4"></div>
+          </div>
           <div class="mkt-ball-shine"></div>
         </div>
       </div>
@@ -887,20 +871,18 @@ function setupMarketToggle() {
   const trackEl = toggle.querySelector('.mkt-track');
   const ball = document.getElementById('mktBall');
   const face = ball.querySelector('.mkt-ball-face');
-  const seam = ball.querySelector('.mkt-ball-seam');
+  const spin = document.getElementById('mktBallSpin');
   const fill = document.getElementById('mktFill');
-  const band = document.getElementById('mktBand');
   const labelLeft = document.getElementById('mktLabelLeft');
   const labelRight = document.getElementById('mktLabelRight');
 
-  const BALL_D = 44, PAD = 4, OVERTRAVEL = 16;
+  const BALL_D = 44, PAD = 4, OVERTRAVEL = 22;
   let leftX = PAD, rightX = 140;
-  let x = leftX, vx = 0, dragging = false, dragStartClientX = 0, dragStartBallX = 0;
-  let rafId = null, rollDeg = 0;
-  let anchorX = leftX; // where the elastic is "pinned" -- the ball's own
-                       // position at the moment a drag begins, not a fixed
-                       // point on the track. A real strap stretches between
-                       // two points that both move; it isn't nailed to a wall.
+  let x = leftX, vx = 0;
+  let targetX = leftX; // where the ball WANTS to be -- the pointer's
+                       // position while dragging, or the snap point after
+  let dragging = false, dragStartClientX = 0, dragStartBallX = 0;
+  let rafId = null, running = false, rollDeg = 0;
 
   function bounds() {
     rightX = trackEl.getBoundingClientRect().width - BALL_D - PAD;
@@ -908,12 +890,14 @@ function setupMarketToggle() {
 
   function paint() {
     ball.style.transform = `translateX(${x}px)`;
-    const stretch = Math.max(-0.3, Math.min(0.3, vx / 36));
+    // squash/stretch along the drag axis, driven by velocity -- pushed
+    // further than a subtle wobble so the ball reads as genuinely springy,
+    // not just eased
+    const stretch = Math.max(-0.42, Math.min(0.42, vx / 26));
     face.style.transform = `scale(${1 + stretch}, ${1 - stretch})`;
     const span = Math.max(1, rightX - leftX);
     const frac = Math.max(0, Math.min(1, (x - leftX) / span));
-    const ballCenter = x + BALL_D / 2;
-    fill.style.left = ballCenter + 'px';
+    fill.style.left = (x + BALL_D / 2) + 'px';
     fill.style.opacity = String(0.22 + frac * 0.28);
     // the side the ball currently covers goes dim (it IS the indicator
     // there already); the other side brightens as "you could drag here"
@@ -922,19 +906,36 @@ function setupMarketToggle() {
     labelLeft.classList.toggle('docked', !onRight);
     labelRight.classList.toggle('active', !onRight);
     labelRight.classList.toggle('docked', onRight);
-    rollDeg += vx * 2.6;
-    seam.style.transform = `rotate(${rollDeg}deg)`;
+    // real rotation: proportional to distance actually travelled, applied
+    // to the same wrapper the pentagons live in, so the facets genuinely
+    // sweep round like a rolling ball instead of a seam spinning on its own
+    // while the texture underneath stays still.
+    rollDeg += vx * 2.8;
+    spin.style.transform = `rotate(${rollDeg}deg)`;
+  }
 
-    // elastic band: anchored to wherever the drag started, stretching to
-    // the current ball position, thinning as it stretches further -- a
-    // slack short band reads thick and woven, a long pull reads taut and thin
-    const anchorCenter = anchorX + BALL_D / 2;
-    const bandLeft = Math.min(ballCenter, anchorCenter);
-    const bandLen = Math.abs(ballCenter - anchorCenter);
-    const thickness = Math.max(2.5, 8 - bandLen / 22);
-    band.style.left = bandLeft + 'px';
-    band.style.width = bandLen + 'px';
-    band.style.height = thickness + 'px';
+  // One continuous spring loop drives everything -- while dragging, targetX
+  // chases the pointer and x springs toward it (which is what makes the
+  // drag itself feel bouncy/elastic rather than glued rigidly to the
+  // cursor); on release, targetX just snaps to whichever side is nearest
+  // and the SAME loop keeps running until it settles there. One system, not
+  // a separate "drag" mode and "release" animation bolted together.
+  function loop() {
+    const k = dragging ? 0.5 : 0.3, damping = dragging ? 0.72 : 0.8;
+    vx = (vx + (targetX - x) * k) * damping;
+    x += vx;
+    paint();
+    if (!dragging && Math.abs(vx) < 0.4 && Math.abs(targetX - x) < 0.4) {
+      x = targetX; vx = 0; paint();
+      running = false;
+      return;
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+  function ensureLoop() {
+    if (running) return;
+    running = true;
+    rafId = requestAnimationFrame(loop);
   }
 
   function setActiveMarket(m) {
@@ -948,29 +949,12 @@ function setupMarketToggle() {
     renderCarousel(preferDate);
   }
 
-  function springTo(target) {
-    cancelAnimationFrame(rafId);
-    const k = 0.32, damping = 0.80;
-    function step() {
-      vx = (vx + (target - x) * k) * damping;
-      x += vx;
-      paint();
-      if (Math.abs(vx) > 0.4 || Math.abs(target - x) > 0.4) {
-        rafId = requestAnimationFrame(step);
-      } else {
-        x = target; vx = 0;
-        paint();
-        band.classList.remove('show');
-      }
-    }
-    rafId = requestAnimationFrame(step);
-  }
-
   function settle() {
     bounds();
     const landedRight = x > (leftX + rightX) / 2;
     setActiveMarket(landedRight ? 'dc12' : 'over15');
-    springTo(landedRight ? rightX : leftX);
+    targetX = landedRight ? rightX : leftX;
+    ensureLoop();
   }
 
   ball.addEventListener('pointerdown', (e) => {
@@ -980,16 +964,11 @@ function setupMarketToggle() {
     if (ball.setPointerCapture) ball.setPointerCapture(e.pointerId);
     dragStartClientX = e.clientX;
     dragStartBallX = x;
-    anchorX = x; // pin the elastic to right here, right now
-    cancelAnimationFrame(rafId);
-    band.classList.add('show');
+    ensureLoop();
   });
   ball.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const prevX = x;
-    x = Math.max(leftX - OVERTRAVEL, Math.min(rightX + OVERTRAVEL, dragStartBallX + (e.clientX - dragStartClientX)));
-    vx = x - prevX;
-    paint();
+    targetX = Math.max(leftX - OVERTRAVEL, Math.min(rightX + OVERTRAVEL, dragStartBallX + (e.clientX - dragStartClientX)));
   });
   function endDrag() {
     if (!dragging) return;
@@ -1000,11 +979,11 @@ function setupMarketToggle() {
   ball.addEventListener('pointerup', endDrag);
   ball.addEventListener('pointercancel', endDrag);
 
-  labelLeft.addEventListener('click', () => { bounds(); setActiveMarket('over15'); springTo(leftX); });
-  labelRight.addEventListener('click', () => { bounds(); setActiveMarket('dc12'); springTo(rightX); });
+  labelLeft.addEventListener('click', () => { bounds(); setActiveMarket('over15'); targetX = leftX; ensureLoop(); });
+  labelRight.addEventListener('click', () => { bounds(); setActiveMarket('dc12'); targetX = rightX; ensureLoop(); });
 
   bounds();
-  x = leftX;
+  x = leftX; targetX = leftX;
   paint();
   window.addEventListener('resize', bounds);
 }
