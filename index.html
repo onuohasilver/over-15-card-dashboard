@@ -641,10 +641,14 @@ function positionTrack(instant) {
     slot.dataset.dist = d <= 2 ? String(d) : 'far';
   });
 
-  const dates = DATA.dates;
+  // slots.length is the count of what's actually rendered right now (i.e.
+  // already filtered to the active market) -- DATA.dates is the *full*
+  // unfiltered list across every market, and using it here would leave
+  // rightBtn wrongly enabled past the true last card whenever the active
+  // market has fewer cards than the grand total.
   const leftBtn = document.getElementById('leftBtn'), rightBtn = document.getElementById('rightBtn');
   if (leftBtn) leftBtn.disabled = idx <= 0;
-  if (rightBtn) rightBtn.disabled = idx >= dates.length - 1;
+  if (rightBtn) rightBtn.disabled = idx >= slots.length - 1;
   document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
 
   if (!instant) {
@@ -660,8 +664,10 @@ function positionTrack(instant) {
 }
 
 function goTo(newIdx) {
-  const dates = DATA.dates;
-  if (newIdx < 0 || newIdx >= dates.length || newIdx === idx) return;
+  // bound against what's actually in the DOM (the active-market-filtered
+  // set), not DATA.dates -- same reasoning as positionTrack() above.
+  const total = document.getElementById('track')?.children.length || 0;
+  if (newIdx < 0 || newIdx >= total || newIdx === idx) return;
   idx = newIdx;
   positionTrack(false);
 }
