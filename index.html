@@ -248,6 +248,7 @@
     color: var(--muted); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
     border-radius: 999px; padding: 4px 11px 4px 8px; cursor: pointer; width: fit-content;
     transition: background .2s ease, color .2s ease, transform .15s ease;
+    text-decoration: none; /* it's an <a> now, not a <button> -- kill the default underline/link styling */
   }
   .share-btn:hover { background: rgba(255,255,255,.13); color: var(--ink); }
   .share-btn:active { transform: scale(.94); }
@@ -571,6 +572,23 @@ function ringSvg(pct, color) {
   </svg>`;
 }
 
+// A real <a href> the browser navigates natively, not a JS-triggered
+// window.open() -- popup blockers (Safari in particular, and especially
+// from a file:// page linking to a different origin) are far more
+// aggressive about blocking programmatic window.open than an actual link
+// click, even when that call happens synchronously inside a click handler.
+// Precomputing the href at render time also means there's nothing left to
+// go wrong at click time.
+function buildTweetIntent(marketLabel, date, legCount, combinedPct, bookingCode, shareUrl) {
+  const lines = [
+    `${marketLabel} card \u2014 ${date} (${legCount} legs, ${combinedPct} combined)`,
+    `Booking code: ${bookingCode}`,
+  ];
+  let intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(lines.join('\n'))}`;
+  if (shareUrl) intent += `&url=${encodeURIComponent(shareUrl)}`;
+  return intent;
+}
+
 function buildCard(date, day) {
   const legs = day.legs, meta = day.meta || {};
   const allSettled = legs.every(l => l.status !== 'pending');
@@ -632,7 +650,7 @@ function buildCard(date, day) {
             </div>
           </div>
         </div>
-        ${meta.booking_code ? `<button class="share-btn" type="button">${ICONS.xLogo} Share</button>` : ''}
+        ${meta.booking_code ? `<a class="share-btn" href="${buildTweetIntent(meta.market_label || 'Over 1.5', date, legs.length, fmtPct(combined).replace('.0%','%'), meta.booking_code, meta.share_url)}" target="_blank" rel="noopener">${ICONS.xLogo} Share</a>` : ''}
         <div class="divider"></div>
         <div class="legs">${legRows}</div>
         <div class="card-bottom">
@@ -674,23 +692,13 @@ function attachCardInteractions(slot, day) {
     });
   });
 
-  // Share this specific card to X/Twitter -- a short, self-contained post
-  // (market, date, leg count, combined chance, the booking code) rather
-  // than a screenshot, so the code itself is copy-pasteable from the tweet.
+  // The share link's href is already fully built at render time (see
+  // buildTweetIntent) -- the browser navigates it natively as a real link
+  // click, which is what actually opens reliably; this listener only has to
+  // stop it from also triggering the whole-card "open slip" tap below.
   const shareBtn = slot.querySelector('.share-btn');
   if (shareBtn) {
-    shareBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // must not also trigger the whole-card "open slip" tap below
-      const m = day.meta || {};
-      const pctText = slot.querySelector('.pct-small b')?.textContent || '';
-      const lines = [
-        `${m.market_label || 'Over 1.5'} card \u2014 ${day.date} (${day.legs.length} legs, ${pctText} combined)`,
-        `Booking code: ${m.booking_code}`,
-      ];
-      let intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(lines.join('\n'))}`;
-      if (m.share_url) intent += `&url=${encodeURIComponent(m.share_url)}`;
-      window.open(intent, '_blank', 'noopener');
-    });
+    shareBtn.addEventListener('click', (e) => { e.stopPropagation(); });
   }
 
   // Tapping the focused card anywhere outside a leg row opens the booking
