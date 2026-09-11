@@ -271,6 +271,10 @@
   .empty { text-align: center; color: var(--muted-2); padding: 60px 20px; font-size: 13px; }
 
   /* ============ MARKET TOGGLE: a draggable, elastic football ============
+     Built from the exact same materials as the cards below it -- the same
+     dark card-face gradient, the same angled metallic rarity-border trick,
+     the same foil shimmer -- rather than a flat colour wash, so it reads as
+     part of the same object language instead of a bolted-on control.
      Two zones ("Over 1.5" / "Double Chance"), a football you can fling
      between them. Dragging stretches an elastic band behind the ball and
      squashes the ball along the drag axis; letting go runs a real
@@ -279,77 +283,141 @@
      ball visibly rolls (rotates) as it travels, not just slides.
      Toggling this is not decorative -- it filters which market's cards
      the carousel below is showing. */
-  .mkt-toggle-wrap { display: flex; justify-content: center; margin-bottom: 22px; }
+  .mkt-toggle-wrap { display: flex; justify-content: center; margin-bottom: 28px; position: relative; }
   .mkt-toggle {
-    position: relative; width: min(88vw, 340px); height: 58px;
+    position: relative; width: min(92vw, 380px); height: 62px;
     touch-action: none; /* we own all drag gestures here, no browser scroll-stealing */
+    filter: drop-shadow(0 14px 28px rgba(0,0,0,.55));
   }
+  /* soft breathing halo behind the whole widget, tinted to the active side --
+     the same "this object is lit from within" cue the cards use */
+  .mkt-toggle::after {
+    content: ""; position: absolute; inset: -22px; z-index: -1; border-radius: 999px;
+    background: radial-gradient(ellipse 70% 80% at 50% 50%, var(--mkt-glow, rgba(122,184,255,.35)), transparent 72%);
+    opacity: .55; filter: blur(4px); transition: background 1.1s ease;
+    animation: mktHaloBreathe 5s ease-in-out infinite;
+  }
+  @keyframes mktHaloBreathe { 0%, 100% { opacity: .4; } 50% { opacity: .7; } }
+
   .mkt-track {
-    position: absolute; inset: 0; border-radius: 999px;
-    background: linear-gradient(180deg, #12131e, #0a0b12);
-    border: 1px solid rgba(255,255,255,.09);
-    box-shadow: inset 0 2px 10px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.04);
-    overflow: hidden;
+    position: absolute; inset: 0; border-radius: 999px; overflow: hidden;
+    background: linear-gradient(165deg, #1c2036 0%, #10121d 55%, #0a0b13 100%);
+    box-shadow: inset 0 2px 14px rgba(0,0,0,.65), inset 0 -1px 0 rgba(255,255,255,.05);
   }
+  /* angled metallic border, identical technique to .card-face::before --
+     same duotone-per-market palette as the halo, so the frame and the glow
+     read as one lit object rather than a CSS-default pill with a stripe in it */
+  .mkt-track::before {
+    content: ""; position: absolute; inset: 0; border-radius: 999px; padding: 1.5px;
+    background: linear-gradient(120deg, var(--mkt-color, var(--pending)) 0%, rgba(255,255,255,.5) 18%, transparent 38%, transparent 62%, var(--mkt-color, var(--pending)) 82%, rgba(255,255,255,.5) 100%);
+    background-size: 220% 220%; animation: mktBorderSheen 6s linear infinite;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: .8; pointer-events: none;
+  }
+  @keyframes mktBorderSheen { to { background-position: 220% 0; } }
+  /* faint metallic foil sheen across the track face, reusing the cards' own
+     texture recipe at a much lower intensity so it whispers rather than shouts */
+  .mkt-track::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(108deg,
+      rgba(255,255,255,0) 0%, rgba(255,255,255,.10) 8%, rgba(255,255,255,0) 16%,
+      rgba(255,255,255,0) 46%, rgba(255,255,255,.07) 54%, rgba(255,255,255,0) 62%);
+    background-size: 260% 260%; mix-blend-mode: overlay;
+    animation: holoDrift 18s ease-in-out infinite; pointer-events: none;
+  }
+
   .mkt-fill {
-    position: absolute; top: 0; bottom: 0; left: 0; width: 50%;
-    background: linear-gradient(90deg, var(--mkt-color, var(--pending)), transparent);
-    opacity: .35; filter: blur(2px);
-    transition: opacity .25s ease;
+    position: absolute; top: 50%; left: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, var(--mkt-color, var(--pending)), transparent 68%);
+    opacity: .28; filter: blur(6px); mix-blend-mode: screen;
+    transition: opacity .3s ease;
   }
+
   .mkt-label {
     position: absolute; top: 0; bottom: 0; display: flex; align-items: center;
-    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--muted-2); transition: color .3s ease, text-shadow .3s ease;
+    font-size: 11.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+    color: rgba(255,255,255,.22); transition: color .35s ease, text-shadow .35s ease, opacity .35s ease;
     z-index: 2; white-space: nowrap; cursor: pointer;
   }
-  .mkt-label-left { left: 18px; }
-  .mkt-label-right { right: 18px; }
-  .mkt-label.active { color: var(--ink); text-shadow: 0 0 14px var(--mkt-glow, rgba(122,184,255,.7)); }
+  .mkt-label-left { left: 22px; }
+  .mkt-label-right { right: 22px; }
+  /* the side the ball is NOT resting on is the bright, inviting one ("drag
+     here") -- the side it IS resting on dims almost away, since the ball
+     itself is that side's indicator now. This is also what keeps the ball
+     from visually colliding with its own label when docked. */
+  .mkt-label.active { color: var(--ink); text-shadow: 0 0 16px var(--mkt-glow, rgba(122,184,255,.8)); }
+  .mkt-label.docked { opacity: .16; }
 
   .mkt-ball {
-    position: absolute; top: 50%; left: 0; width: 46px; height: 46px;
-    margin-top: -23px; z-index: 3; cursor: grab;
+    position: absolute; top: 50%; left: 0; width: 44px; height: 44px;
+    margin-top: -22px; z-index: 3; cursor: grab;
     transition: transform .05s linear; /* only smooths sub-frame jitter; drag & spring drive the real motion */
   }
   .mkt-ball.dragging { cursor: grabbing; }
   .mkt-ball-face {
     width: 100%; height: 100%; border-radius: 50%; position: relative; overflow: hidden;
     background:
-      radial-gradient(circle at 32% 28%, rgba(255,255,255,.95), rgba(235,235,240,.9) 35%, rgba(200,202,210,.95) 70%, rgba(160,162,172,1) 100%);
+      radial-gradient(circle at 32% 26%, rgba(255,255,255,.98), rgba(232,233,240,.94) 32%, rgba(196,199,210,.96) 68%, rgba(150,153,166,1) 100%);
     box-shadow:
-      0 6px 14px rgba(0,0,0,.5),
-      0 2px 4px rgba(0,0,0,.4),
-      inset 0 -4px 8px rgba(0,0,0,.25),
-      inset 0 3px 5px rgba(255,255,255,.6);
+      0 10px 20px -6px rgba(0,0,0,.6),
+      0 3px 6px rgba(0,0,0,.35),
+      0 0 0 1px rgba(255,255,255,.08),
+      inset 0 -5px 9px rgba(0,0,0,.22),
+      inset 0 3px 6px rgba(255,255,255,.65);
   }
   .mkt-ball .pentagon {
-    position: absolute; background: #191a22;
+    position: absolute; background: #1a1b23;
     clip-path: polygon(50% 0%, 95% 35%, 78% 90%, 22% 90%, 5% 35%);
   }
-  .mkt-ball .p1 { width: 15px; height: 15px; top: 6px; left: 15.5px; }
-  .mkt-ball .p2 { width: 12px; height: 12px; top: 24px; left: 3px; transform: rotate(-18deg); }
-  .mkt-ball .p3 { width: 12px; height: 12px; top: 24px; left: 28px; transform: rotate(18deg); }
-  .mkt-ball .p4 { width: 9px; height: 9px; top: 36px; left: 18px; opacity: .9; }
+  .mkt-ball .p1 { width: 14px; height: 14px; top: 6px; left: 15px; }
+  .mkt-ball .p2 { width: 11px; height: 11px; top: 23px; left: 3px; transform: rotate(-18deg); }
+  .mkt-ball .p3 { width: 11px; height: 11px; top: 23px; left: 27px; transform: rotate(18deg); }
+  .mkt-ball .p4 { width: 8px; height: 8px; top: 34px; left: 17px; opacity: .9; }
   .mkt-ball-seam {
     position: absolute; inset: 0; border-radius: 50%;
     background:
-      repeating-conic-gradient(from 0deg, rgba(20,20,26,.12) 0deg 2deg, transparent 2deg 24deg);
+      repeating-conic-gradient(from 0deg, rgba(20,20,26,.14) 0deg 2deg, transparent 2deg 24deg);
     mix-blend-mode: multiply;
   }
   .mkt-ball-shine {
-    position: absolute; top: 8%; left: 14%; width: 34%; height: 26%; border-radius: 50%;
+    position: absolute; top: 8%; left: 14%; width: 32%; height: 24%; border-radius: 50%;
     background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,255,255,0) 70%);
     pointer-events: none;
   }
-
-  .mkt-band {
-    position: absolute; top: 50%; height: 3px; z-index: 1; pointer-events: none;
-    background: linear-gradient(90deg, var(--mkt-color, var(--pending)), rgba(255,255,255,.5));
-    transform-origin: left center; opacity: 0; border-radius: 3px;
-    box-shadow: 0 0 8px var(--mkt-glow, rgba(122,184,255,.6));
+  /* a slim ring of the active colour around the ball itself, echoing the
+     cards' rarity ring -- makes the ball look like it belongs to whichever
+     side it's currently on, not just a neutral prop sitting on the track */
+  .mkt-ball::after {
+    content: ""; position: absolute; inset: -3px; border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--mkt-color, var(--pending)), 0 0 14px 1px var(--mkt-glow, rgba(122,184,255,.6));
+    opacity: .75; pointer-events: none;
   }
-  .mkt-band.show { opacity: .8; }
+
+  /* the elastic itself: anchored to wherever you actually grabbed the ball
+     (not a fixed track edge), so it stretches the way a real strap does --
+     between two points, not out of a wall socket. A woven-ribbon texture
+     (alternating colour/highlight stripes running its length, like the
+     ribbing on an elastic waistband) instead of a flat glowing line, plus a
+     soft cloth-like shadow so it reads as material with give, not a laser. */
+  .mkt-band {
+    position: absolute; top: 50%; z-index: 1; pointer-events: none;
+    border-radius: 4px; opacity: 0; transform: translateY(-50%);
+    background-image:
+      repeating-linear-gradient(90deg,
+        var(--mkt-color, var(--pending)) 0px, var(--mkt-color, var(--pending)) 3px,
+        rgba(255,255,255,.55) 3px, rgba(255,255,255,.55) 4.2px,
+        var(--mkt-color, var(--pending)) 4.2px, var(--mkt-color, var(--pending)) 7px);
+    background-size: 7px 100%;
+    box-shadow: 0 3px 6px rgba(0,0,0,.4), 0 0 10px var(--mkt-glow, rgba(122,184,255,.45));
+    transition: opacity .3s ease;
+    /* both ends fade rather than cut off square -- reads as material
+       narrowing where it's held, not a rectangle with hard edges */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  }
+  .mkt-band.show { opacity: .85; }
 
   .mkt-toggle.market-over15 { --mkt-color: var(--pending); --mkt-glow: rgba(122,184,255,.7); }
   .mkt-toggle.market-dc12 { --mkt-color: var(--gold); --mkt-glow: rgba(255,211,107,.7); }
@@ -825,10 +893,14 @@ function setupMarketToggle() {
   const labelLeft = document.getElementById('mktLabelLeft');
   const labelRight = document.getElementById('mktLabelRight');
 
-  const BALL_D = 46, PAD = 4, OVERTRAVEL = 16;
+  const BALL_D = 44, PAD = 4, OVERTRAVEL = 16;
   let leftX = PAD, rightX = 140;
   let x = leftX, vx = 0, dragging = false, dragStartClientX = 0, dragStartBallX = 0;
   let rafId = null, rollDeg = 0;
+  let anchorX = leftX; // where the elastic is "pinned" -- the ball's own
+                       // position at the moment a drag begins, not a fixed
+                       // point on the track. A real strap stretches between
+                       // two points that both move; it isn't nailed to a wall.
 
   function bounds() {
     rightX = trackEl.getBoundingClientRect().width - BALL_D - PAD;
@@ -840,13 +912,29 @@ function setupMarketToggle() {
     face.style.transform = `scale(${1 + stretch}, ${1 - stretch})`;
     const span = Math.max(1, rightX - leftX);
     const frac = Math.max(0, Math.min(1, (x - leftX) / span));
-    fill.style.width = (12 + frac * 76) + '%';
+    const ballCenter = x + BALL_D / 2;
+    fill.style.left = ballCenter + 'px';
     fill.style.opacity = String(0.22 + frac * 0.28);
-    labelLeft.classList.toggle('active', frac < 0.5);
-    labelRight.classList.toggle('active', frac >= 0.5);
+    // the side the ball currently covers goes dim (it IS the indicator
+    // there already); the other side brightens as "you could drag here"
+    const onRight = frac >= 0.5;
+    labelLeft.classList.toggle('active', onRight);
+    labelLeft.classList.toggle('docked', !onRight);
+    labelRight.classList.toggle('active', !onRight);
+    labelRight.classList.toggle('docked', onRight);
     rollDeg += vx * 2.6;
     seam.style.transform = `rotate(${rollDeg}deg)`;
-    band.style.width = (x + BALL_D / 2) + 'px';
+
+    // elastic band: anchored to wherever the drag started, stretching to
+    // the current ball position, thinning as it stretches further -- a
+    // slack short band reads thick and woven, a long pull reads taut and thin
+    const anchorCenter = anchorX + BALL_D / 2;
+    const bandLeft = Math.min(ballCenter, anchorCenter);
+    const bandLen = Math.abs(ballCenter - anchorCenter);
+    const thickness = Math.max(2.5, 8 - bandLen / 22);
+    band.style.left = bandLeft + 'px';
+    band.style.width = bandLen + 'px';
+    band.style.height = thickness + 'px';
   }
 
   function setActiveMarket(m) {
@@ -892,6 +980,7 @@ function setupMarketToggle() {
     if (ball.setPointerCapture) ball.setPointerCapture(e.pointerId);
     dragStartClientX = e.clientX;
     dragStartBallX = x;
+    anchorX = x; // pin the elastic to right here, right now
     cancelAnimationFrame(rafId);
     band.classList.add('show');
   });
