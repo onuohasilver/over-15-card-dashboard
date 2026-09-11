@@ -270,18 +270,123 @@
 
   .empty { text-align: center; color: var(--muted-2); padding: 60px 20px; font-size: 13px; }
 
+  /* ============ MARKET TOGGLE: a draggable, elastic football ============
+     Two zones ("Over 1.5" / "Double Chance"), a football you can fling
+     between them. Dragging stretches an elastic band behind the ball and
+     squashes the ball along the drag axis; letting go runs a real
+     spring-damper simulation (not a canned CSS easing curve) so it
+     overshoots and settles like something with actual momentum, and the
+     ball visibly rolls (rotates) as it travels, not just slides.
+     Toggling this is not decorative -- it filters which market's cards
+     the carousel below is showing. */
+  .mkt-toggle-wrap { display: flex; justify-content: center; margin-bottom: 22px; }
+  .mkt-toggle {
+    position: relative; width: min(88vw, 340px); height: 58px;
+    touch-action: none; /* we own all drag gestures here, no browser scroll-stealing */
+  }
+  .mkt-track {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: linear-gradient(180deg, #12131e, #0a0b12);
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow: inset 0 2px 10px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.04);
+    overflow: hidden;
+  }
+  .mkt-fill {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 50%;
+    background: linear-gradient(90deg, var(--mkt-color, var(--pending)), transparent);
+    opacity: .35; filter: blur(2px);
+    transition: opacity .25s ease;
+  }
+  .mkt-label {
+    position: absolute; top: 0; bottom: 0; display: flex; align-items: center;
+    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted-2); transition: color .3s ease, text-shadow .3s ease;
+    z-index: 2; white-space: nowrap; cursor: pointer;
+  }
+  .mkt-label-left { left: 18px; }
+  .mkt-label-right { right: 18px; }
+  .mkt-label.active { color: var(--ink); text-shadow: 0 0 14px var(--mkt-glow, rgba(122,184,255,.7)); }
+
+  .mkt-ball {
+    position: absolute; top: 50%; left: 0; width: 46px; height: 46px;
+    margin-top: -23px; z-index: 3; cursor: grab;
+    transition: transform .05s linear; /* only smooths sub-frame jitter; drag & spring drive the real motion */
+  }
+  .mkt-ball.dragging { cursor: grabbing; }
+  .mkt-ball-face {
+    width: 100%; height: 100%; border-radius: 50%; position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255,255,255,.95), rgba(235,235,240,.9) 35%, rgba(200,202,210,.95) 70%, rgba(160,162,172,1) 100%);
+    box-shadow:
+      0 6px 14px rgba(0,0,0,.5),
+      0 2px 4px rgba(0,0,0,.4),
+      inset 0 -4px 8px rgba(0,0,0,.25),
+      inset 0 3px 5px rgba(255,255,255,.6);
+  }
+  .mkt-ball .pentagon {
+    position: absolute; background: #191a22;
+    clip-path: polygon(50% 0%, 95% 35%, 78% 90%, 22% 90%, 5% 35%);
+  }
+  .mkt-ball .p1 { width: 15px; height: 15px; top: 6px; left: 15.5px; }
+  .mkt-ball .p2 { width: 12px; height: 12px; top: 24px; left: 3px; transform: rotate(-18deg); }
+  .mkt-ball .p3 { width: 12px; height: 12px; top: 24px; left: 28px; transform: rotate(18deg); }
+  .mkt-ball .p4 { width: 9px; height: 9px; top: 36px; left: 18px; opacity: .9; }
+  .mkt-ball-seam {
+    position: absolute; inset: 0; border-radius: 50%;
+    background:
+      repeating-conic-gradient(from 0deg, rgba(20,20,26,.12) 0deg 2deg, transparent 2deg 24deg);
+    mix-blend-mode: multiply;
+  }
+  .mkt-ball-shine {
+    position: absolute; top: 8%; left: 14%; width: 34%; height: 26%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,255,255,0) 70%);
+    pointer-events: none;
+  }
+
+  .mkt-band {
+    position: absolute; top: 50%; height: 3px; z-index: 1; pointer-events: none;
+    background: linear-gradient(90deg, var(--mkt-color, var(--pending)), rgba(255,255,255,.5));
+    transform-origin: left center; opacity: 0; border-radius: 3px;
+    box-shadow: 0 0 8px var(--mkt-glow, rgba(122,184,255,.6));
+  }
+  .mkt-band.show { opacity: .8; }
+
+  .mkt-toggle.market-over15 { --mkt-color: var(--pending); --mkt-glow: rgba(122,184,255,.7); }
+  .mkt-toggle.market-dc12 { --mkt-color: var(--gold); --mkt-glow: rgba(255,211,107,.7); }
+
   #confetti-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
 </style>
 </head>
 <body>
 <canvas id="confetti-canvas"></canvas>
 <div class="wrap">
+  <div class="mkt-toggle-wrap">
+    <div class="mkt-toggle market-over15" id="mktToggle">
+      <div class="mkt-track">
+        <div class="mkt-fill" id="mktFill"></div>
+        <div class="mkt-label mkt-label-left" id="mktLabelLeft">Over 1.5</div>
+        <div class="mkt-label mkt-label-right" id="mktLabelRight">Double Chance</div>
+      </div>
+      <div class="mkt-band" id="mktBand"></div>
+      <div class="mkt-ball" id="mktBall">
+        <div class="mkt-ball-face">
+          <div class="mkt-ball-seam"></div>
+          <div class="pentagon p1"></div>
+          <div class="pentagon p2"></div>
+          <div class="pentagon p3"></div>
+          <div class="pentagon p4"></div>
+          <div class="mkt-ball-shine"></div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="carouselRoot"></div>
 </div>
 
 <script>
 const DATA = {"dates": ["2026-09-10::over15", "2026-09-11::over15", "2026-09-11::dc12", "2026-09-12::over15", "2026-09-13::over15", "2026-09-14::over15"], "days": {"2026-09-10::over15": {"date": "2026-09-10", "market": "over15", "legs": [{"card_date": "2026-09-10", "espn_id": "401915443", "league": "uefa.champions", "match": "Bayern Munich v Bodo/Glimt", "kickoff_local": "2026-09-10 20:00", "own_p": 90, "recorded_at": "2026-09-10T10:35:09.015244+00:00", "status": "WON", "actual_score": "2-0", "actual_total": 2, "note": "\u03bb\u22484.20. Both sides red-hot scoring; never met before.", "home_id": "132", "away_id": "2980", "sample_o15": "18/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (69') at time of marking, live score 2-0"}, {"card_date": "2026-09-10", "espn_id": "401915422", "league": "uefa.champions", "match": "PSV Eindhoven v Shakhtar Donetsk", "kickoff_local": "2026-09-10 17:45", "own_p": 88, "recorded_at": "2026-09-10T10:35:09.015595+00:00", "status": "WON", "actual_score": "1-1", "actual_total": 2, "note": "\u03bb\u22484.05, discounted for PSV's Eredivisie-only scoring form.", "home_id": "148", "away_id": "493", "sample_o15": "19/20"}, {"card_date": "2026-09-10", "espn_id": "401915442", "league": "uefa.champions", "match": "Manchester United v Sabah FK", "kickoff_local": "2026-09-10 20:00", "own_p": 86, "recorded_at": "2026-09-10T10:35:09.015599+00:00", "status": "WON", "actual_score": "4-0", "actual_total": 4, "note": "\u03bb\u22483.38. Man Utd defense leaky lately; Sabah score in bunches.", "home_id": "360", "away_id": "21922", "sample_o15": "16/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (73') at time of marking, live score 4-0"}, {"card_date": "2026-09-10", "espn_id": "401915444", "league": "uefa.champions", "match": "Fenerbahce v AS Roma", "kickoff_local": "2026-09-10 17:45", "own_p": 84, "recorded_at": "2026-09-10T10:35:09.015600+00:00", "status": "WON", "actual_score": "1-1", "actual_total": 2, "note": "\u03bb\u22483.35. Fenerbahce leaky at home; Roma leakier away than overall record suggests.", "home_id": "436", "away_id": "104", "sample_o15": "18/20"}, {"card_date": "2026-09-10", "espn_id": "401915441", "league": "uefa.champions", "match": "Como v RB Leipzig", "kickoff_local": "2026-09-10 20:00", "own_p": 80, "recorded_at": "2026-09-10T10:35:09.015602+00:00", "status": "WON", "actual_score": "3-1", "actual_total": 4, "note": "\u03bb\u22483.25. Como tight at home (60% o1.5), offset by Leipzig's current leaky defense.", "home_id": "2572", "away_id": "11420", "sample_o15": "16/20", "settle_note": "manually settled early per user confirmation that SportyBet's own market had already resolved this leg; ESPN status was still in-progress (71') at time of marking, live score 3-1"}], "meta": {"booking_code": "YDQVHT", "combined_chance": 45.8, "coverage": "43 fixtures on the calendar day. 28 had already kicked off by the time the card was built (11:24 WAT), leaving 15 still to play (13 modelable). All 15 were checked against SportyBet's market feed; 8 had a workable 1.5 line and were researched. 5 made the card.", "date": "2026-09-10", "market": "over15", "recorded_at": "2026-09-10T12:27:23.020370+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=YDQVHT"}}, "2026-09-11::over15": {"date": "2026-09-11", "market": "over15", "legs": [{"card_date": "2026-09-11", "espn_id": "401874540", "league": "den.1", "match": "F.C. K\u00f8benhavn v AC Horsens", "kickoff_local": "2026-09-11 18:00", "own_p": 88, "note": "away sample thin (n=3), H2H stale (2020-2023) - discounted from raw 92.9%", "home_id": "909", "away_id": "3585", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251840+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875611", "league": "ned.1", "match": "AZ Alkmaar v Willem II", "kickoff_local": "2026-09-11 19:00", "own_p": 88, "note": "Willem II missing #1 keeper Didillon; worst attack in league", "home_id": "140", "away_id": "156", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251971+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401885116", "league": "ger.2", "match": "1. FC N\u00fcrnberg v Hannover 96", "kickoff_local": "2026-09-11 17:30", "own_p": 87, "note": "H2H 5/5 over 1.5, avg 3.6; N\u00fcrnberg scored 4,4,3 in last three", "home_id": "269", "away_id": "2428", "sample_o15": "8/10", "recorded_at": "2026-09-10T12:54:17.251974+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875938", "league": "ned.2", "match": "Jong Ajax v RKC Waalwijk", "kickoff_local": "2026-09-11 19:00", "own_p": 85, "note": "reserve side, thin news coverage - discounted from raw 88.4%", "home_id": "10597", "away_id": "155", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251976+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-11", "espn_id": "401875942", "league": "ned.2", "match": "FC Eindhoven v FC Dordrecht", "kickoff_local": "2026-09-11 19:00", "own_p": 82, "note": "2 of last 5 H2H were 0-0 - discounted from raw 85.9%", "home_id": "3732", "away_id": "4426", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.251980+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "Q8K8WD", "combined_chance": 47.0, "coverage": "69 fixtures on the day, 63 modelable. 8 candidates cleared 75% and were checked against SportyBet's market and researched; 3 cut on team-news/data-quality grounds, 5 made the card.", "date": "2026-09-11", "market": "over15", "recorded_at": "2026-09-10T12:54:17.254573+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=Q8K8WD"}}, "2026-09-11::dc12": {"date": "2026-09-11", "market": "dc12", "legs": [{"card_date": "2026-09-11", "espn_id": "401900922", "league": "ksa.1", "match": "Al Ahli v Al Hazem", "kickoff_local": "2026-09-11 19:00", "own_p": 83, "note": "\u03bb\u22482.25 home, 0.65 away. H2H: Al Ahli lead 4-0, all decisive.", "home_id": "8346", "away_id": "21964", "sample_o15": "17/20", "market": "dc12", "sample_label": "12", "recorded_at": "2026-09-11T09:30:04.241215+00:00", "status": "pending", "actual_score": null, "actual_total": null}, {"card_date": "2026-09-11", "espn_id": "401874759", "league": "ita.1", "match": "Venezia v Fiorentina", "kickoff_local": "2026-09-11 19:45", "own_p": 78, "note": "\u03bb\u22481.95 home, 1.15 away. H2H over 4 meetings has only 1 draw.", "home_id": "17530", "away_id": "109", "sample_o15": "19/20", "market": "dc12", "sample_label": "12", "recorded_at": "2026-09-11T09:30:04.241380+00:00", "status": "pending", "actual_score": null, "actual_total": null}, {"card_date": "2026-09-11", "espn_id": "401876459", "league": "fra.1", "match": "Stade Rennais v Marseille", "kickoff_local": "2026-09-11 19:45", "own_p": 78, "note": "\u03bb\u22481.85 home, 0.85 away. H2H: Marseille lead 4-1 across 5, only 1 draw.", "home_id": "169", "away_id": "176", "sample_o15": "17/20", "market": "dc12", "sample_label": "12", "recorded_at": "2026-09-11T09:30:04.241383+00:00", "status": "pending", "actual_score": null, "actual_total": null}, {"card_date": "2026-09-11", "espn_id": "401877638", "league": "jpn.1", "match": "Vissel Kobe v Kashima Antlers", "kickoff_local": "2026-09-11 11:00", "own_p": 77, "note": "\u03bb\u22481.75 home, 1.25 away. H2H tied 2-2-1, 4 of 5 decisive -- supports rather than discounts the pick.", "home_id": "7477", "away_id": "7115", "sample_o15": "16/20", "market": "dc12", "sample_label": "12", "recorded_at": "2026-09-11T09:30:04.241385+00:00", "status": "pending", "actual_score": null, "actual_total": null}, {"card_date": "2026-09-11", "espn_id": "401900920", "league": "ksa.1", "match": "Al Qadsiah v Al Ettifaq", "kickoff_local": "2026-09-11 16:25", "own_p": 76, "note": "\u03bb\u22481.70 home, 1.10 away. H2H: Al Qadsiah lead 2-1, 1 draw in 4.", "home_id": "22022", "away_id": "8363", "sample_o15": "17/20", "market": "dc12", "sample_label": "12", "recorded_at": "2026-09-11T09:30:04.241387+00:00", "status": "pending", "actual_score": null, "actual_total": null}], "meta": {"booking_code": "L5VMR7", "combined_chance": 29.3, "coverage": "Demo Double Chance 12 card for 2026-09-11, built alongside the existing Over 1.5 card for the same day. Shortlisted from real fixtures already fetched for this date; H2H checked for each before inclusion (Kyoto Sanga v Kashiwa Reysol was cut here despite a 76% raw model number because their H2H shows 3 draws in the last 5 meetings).", "date": "2026-09-11", "market": "dc12", "market_label": "Double Chance 12", "recorded_at": "2026-09-11T09:30:04.243587+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=L5VMR7"}}, "2026-09-12::over15": {"date": "2026-09-12", "market": "over15", "legs": [{"card_date": "2026-09-12", "espn_id": "401900921", "league": "ksa.1", "match": "Al Khaleej v Al Nassr", "kickoff_local": "2026-09-12 19:00", "own_p": 91, "note": "H2H 5/5 avg 4.0; Al Khaleej winless & leaky (11 conceded/5), Al Nassr elite away", "home_id": "21829", "away_id": "817", "sample_o15": "8/10", "recorded_at": "2026-09-10T12:54:17.304129+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884796", "league": "ger.1", "match": "SC Freiburg v Borussia M\u00f6nchengladbach", "kickoff_local": "2026-09-12 14:30", "own_p": 90, "note": "Freiburg form team in Bundesliga (17-4 GD/5 games); Gladbach defensive crisis", "home_id": "126", "away_id": "268", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.304287+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884797", "league": "ger.1", "match": "TSG Hoffenheim v VfB Stuttgart", "kickoff_local": "2026-09-12 14:30", "own_p": 90, "note": "Hoffenheim leaky/back-to-back losses (goals both ways); Stuttgart off 4-1 win", "home_id": "7911", "away_id": "134", "sample_o15": "7/10", "recorded_at": "2026-09-10T12:54:17.304290+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401882880", "league": "esp.1", "match": "Real Madrid v Rayo Vallecano", "kickoff_local": "2026-09-12 20:00", "own_p": 87, "note": "Real Madrid missing 3 defenders (Militao, Mendy, Asencio doubt); Rayo attacking well", "home_id": "86", "away_id": "101", "sample_o15": "10/10", "recorded_at": "2026-09-10T12:54:17.304292+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-12", "espn_id": "401884795", "league": "ger.1", "match": "FC Augsburg v Bayer Leverkusen", "kickoff_local": "2026-09-12 14:30", "own_p": 86, "note": "H2H 5/5 but tight (avg 2.4); both sides chaotic/high-scoring recently", "home_id": "3841", "away_id": "131", "sample_o15": "9/10", "recorded_at": "2026-09-10T12:54:17.304293+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "KX36U4", "combined_chance": 55.1, "coverage": "234 fixtures on the day, 205 modelable. 11 candidates cleared 75% and were checked against SportyBet's market and researched; 6 cut (2 on current-season news contradicting the historical average, 1 on a date/division conflict, 3 narrowly below the top 5), 5 made the card.", "date": "2026-09-12", "market": "over15", "recorded_at": "2026-09-10T12:54:17.304609+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=KX36U4"}}, "2026-09-13::over15": {"date": "2026-09-13", "market": "over15", "legs": [{"card_date": "2026-09-13", "espn_id": "401902918", "league": "eng.w.1", "match": "Liverpool v Tottenham Hotspur", "kickoff_local": "2026-09-13 14:00", "own_p": 91, "note": "WSL; both scored heavily in openers, H2H 5/5 avg 3.2, no confirmed injuries", "home_id": "19971", "away_id": "20062", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.468394+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401885118", "league": "ger.2", "match": "1. FC Heidenheim v Holstein Kiel", "kickoff_local": "2026-09-13 12:30", "own_p": 91, "note": "Kiel missing 2 CBs + a forward; Heidenheim already averaging 5.25 combined goals/game", "home_id": "6418", "away_id": "7884", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468705+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "761802", "league": "usa.1", "match": "FC Cincinnati v Charlotte FC", "kickoff_local": "2026-09-13 00:30", "own_p": 90, "note": "playoff-race stakes both sides, Charlotte missing starting LB", "home_id": "18267", "away_id": "21300", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.468710+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401875605", "league": "ned.1", "match": "PSV Eindhoven v Sparta Rotterdam", "kickoff_local": "2026-09-13 19:00", "own_p": 88, "note": "PSV missing 2 forwards + 3-day CL turnaround - discounted from raw 90.8%", "home_id": "148", "away_id": "151", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468712+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-13", "espn_id": "401885439", "league": "por.1", "match": "Benfica v Gil Vicente", "kickoff_local": "2026-09-13 18:00", "own_p": 88, "note": "Benfica fully fit, GF18-GA5 in 5 games, H2H 5/5 avg 3.6", "home_id": "1929", "away_id": "3699", "sample_o15": "10/10", "recorded_at": "2026-09-10T19:54:30.468714+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "QNMZ22", "combined_chance": 57.7, "coverage": "219 fixtures on the day, 200 modelable. 13 candidates cleared 75% and were checked against SportyBet's market and researched; 8 cut (1 for no market, 1 for missing goalkeeper market, 6 narrowly below the top 5 or discounted on team news), 5 made the card.", "date": "2026-09-13", "market": "over15", "recorded_at": "2026-09-10T19:54:30.478386+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=QNMZ22"}}, "2026-09-14::over15": {"date": "2026-09-14", "market": "over15", "legs": [{"card_date": "2026-09-14", "espn_id": "401882877", "league": "esp.1", "match": "Villarreal v Real Betis", "kickoff_local": "2026-09-14 20:00", "own_p": 91, "note": "Villarreal winless & leaky, Betis red-hot (beat Real Madrid, won away in CL)", "home_id": "102", "away_id": "244", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.530483+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401874966", "league": "ita.1", "match": "Internazionale v Udinese", "kickoff_local": "2026-09-14 19:45", "own_p": 88, "note": "Udinese missing starting CB + a midfielder (surgery) vs Inter's in-form attack", "home_id": "110", "away_id": "118", "sample_o15": "9/10", "recorded_at": "2026-09-10T19:54:30.530629+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401873992", "league": "swe.1", "match": "Djurg\u00e5rden v GAIS", "kickoff_local": "2026-09-14 18:00", "own_p": 87, "note": "GAIS keeper in concussion-protocol doubt; Djurg\u00e5rden strong home scoring", "home_id": "2339", "away_id": "8222", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530632+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401843435", "league": "nor.1", "match": "Bodo/Glimt v Sandefjord", "kickoff_local": "2026-09-14 18:00", "own_p": 84, "note": "Bodo played Bayern away Thu (rotation risk) - discounted slightly from raw 85.3%", "home_id": "2980", "away_id": "3279", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530634+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}, {"card_date": "2026-09-14", "espn_id": "401874021", "league": "swe.1", "match": "IK Sirius v Degerfors", "kickoff_local": "2026-09-14 18:00", "own_p": 83, "note": "Degerfors league's worst attack but Sirius leaky at back; H2H 3-1-1 Sirius", "home_id": "8547", "away_id": "20856", "sample_o15": "8/10", "recorded_at": "2026-09-10T19:54:30.530636+00:00", "status": "pending", "actual_score": null, "actual_total": null, "_note": "Scheduled"}], "meta": {"booking_code": "KEKNB2", "combined_chance": 48.6, "coverage": "47 fixtures on the day (a Monday), 44 modelable. 8 candidates cleared 75% and were checked against SportyBet's market; 2 cut for having no 1.5 market at all (San Diego v Philadelphia, Jong PSV v Jong AZ), 1 cut on team news (Torino v Roma - Roma's suffocating defense), 5 made the card.", "date": "2026-09-14", "market": "over15", "recorded_at": "2026-09-10T19:54:30.531005+00:00", "share_url": "http://www.sportybet.com/ng/?shareCode=KEKNB2"}}}, "summary": {"settled": 5, "wins": 5, "hit_rate": 100.0, "pending": 25, "cards_won": 1, "cards_lost": 0, "current_streak": 1, "best_streak": 1}, "calibration": [{"bucket": "90-100%", "n": 1, "hits": 1, "actual_pct": 100.0, "avg_predicted_pct": 90.0}, {"bucket": "85-89%", "n": 2, "hits": 2, "actual_pct": 100.0, "avg_predicted_pct": 87.0}, {"bucket": "80-84%", "n": 2, "hits": 2, "actual_pct": 100.0, "avg_predicted_pct": 82.0}]};
 let idx = 0;
+let activeMarket = 'over15'; // driven by the football toggle; filters which market's cards renderCarousel shows
 
 function fmtPct(p) { return (Math.round(p * 10) / 10) + '%'; }
 function code3(name) {
@@ -563,14 +668,20 @@ function goTo(newIdx) {
 
 let firstRender = true;
 
-function renderCarousel() {
-  const dates = DATA.dates;
+function renderCarousel(preferDate) {
+  const dates = DATA.dates.filter(id => DATA.days[id].market === activeMarket);
   const root = document.getElementById('carouselRoot');
   if (!dates.length) {
-    root.innerHTML = '<div class="empty">No cards logged yet.<br>Build one, then run <code>track.py record</code>.</div>';
+    const label = activeMarket === 'dc12' ? 'Double Chance' : 'Over 1.5';
+    root.innerHTML = `<div class="empty">No ${label} cards logged yet.<br>Build one, then run <code>track.py record</code>.</div>`;
     return;
   }
-  idx = initialIdx(dates);
+  // switching markets tries to land on the same calendar date you were
+  // already looking at (e.g. today's Over 1.5 card -> today's Double Chance
+  // card), falling back to the usual today-or-closest logic if that date
+  // has no card in the market you just switched to.
+  const preferred = preferDate ? dates.findIndex(id => DATA.days[id].date === preferDate) : -1;
+  idx = preferred !== -1 ? preferred : initialIdx(dates);
 
   root.innerHTML = `
     <div class="carousel-viewport" id="viewport">
@@ -687,6 +798,123 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('load', () => positionTrack(true));
 
+// ============ MARKET TOGGLE: draggable elastic football ============
+function setupMarketToggle() {
+  const marketsPresent = new Set(DATA.dates.map(id => DATA.days[id].market));
+  const wrap = document.querySelector('.mkt-toggle-wrap');
+  if (!marketsPresent.has('dc12')) {
+    // nothing to switch to yet -- hide the widget rather than show a
+    // control with only one real destination
+    if (wrap) wrap.style.display = 'none';
+    return;
+  }
+
+  const toggle = document.getElementById('mktToggle');
+  const trackEl = toggle.querySelector('.mkt-track');
+  const ball = document.getElementById('mktBall');
+  const face = ball.querySelector('.mkt-ball-face');
+  const seam = ball.querySelector('.mkt-ball-seam');
+  const fill = document.getElementById('mktFill');
+  const band = document.getElementById('mktBand');
+  const labelLeft = document.getElementById('mktLabelLeft');
+  const labelRight = document.getElementById('mktLabelRight');
+
+  const BALL_D = 46, PAD = 4, OVERTRAVEL = 16;
+  let leftX = PAD, rightX = 140;
+  let x = leftX, vx = 0, dragging = false, dragStartClientX = 0, dragStartBallX = 0;
+  let rafId = null, rollDeg = 0;
+
+  function bounds() {
+    rightX = trackEl.getBoundingClientRect().width - BALL_D - PAD;
+  }
+
+  function paint() {
+    ball.style.transform = `translateX(${x}px)`;
+    const stretch = Math.max(-0.3, Math.min(0.3, vx / 36));
+    face.style.transform = `scale(${1 + stretch}, ${1 - stretch})`;
+    const span = Math.max(1, rightX - leftX);
+    const frac = Math.max(0, Math.min(1, (x - leftX) / span));
+    fill.style.width = (12 + frac * 76) + '%';
+    fill.style.opacity = String(0.22 + frac * 0.28);
+    labelLeft.classList.toggle('active', frac < 0.5);
+    labelRight.classList.toggle('active', frac >= 0.5);
+    rollDeg += vx * 2.6;
+    seam.style.transform = `rotate(${rollDeg}deg)`;
+    band.style.width = (x + BALL_D / 2) + 'px';
+  }
+
+  function setActiveMarket(m) {
+    if (activeMarket === m) return;
+    const currentDates = DATA.dates.filter(id => DATA.days[id].market === activeMarket);
+    const preferDate = currentDates[idx] ? DATA.days[currentDates[idx]].date : null;
+    activeMarket = m;
+    toggle.classList.toggle('market-over15', m === 'over15');
+    toggle.classList.toggle('market-dc12', m === 'dc12');
+    firstRender = true; // replay the "dealt onto the table" entrance on every switch
+    renderCarousel(preferDate);
+  }
+
+  function springTo(target) {
+    cancelAnimationFrame(rafId);
+    const k = 0.32, damping = 0.80;
+    function step() {
+      vx = (vx + (target - x) * k) * damping;
+      x += vx;
+      paint();
+      if (Math.abs(vx) > 0.4 || Math.abs(target - x) > 0.4) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        x = target; vx = 0;
+        paint();
+        band.classList.remove('show');
+      }
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function settle() {
+    bounds();
+    const landedRight = x > (leftX + rightX) / 2;
+    setActiveMarket(landedRight ? 'dc12' : 'over15');
+    springTo(landedRight ? rightX : leftX);
+  }
+
+  ball.addEventListener('pointerdown', (e) => {
+    bounds();
+    dragging = true;
+    ball.classList.add('dragging');
+    ball.setPointerCapture(e.pointerId);
+    dragStartClientX = e.clientX;
+    dragStartBallX = x;
+    cancelAnimationFrame(rafId);
+    band.classList.add('show');
+  });
+  ball.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const prevX = x;
+    x = Math.max(leftX - OVERTRAVEL, Math.min(rightX + OVERTRAVEL, dragStartBallX + (e.clientX - dragStartClientX)));
+    vx = x - prevX;
+    paint();
+  });
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    ball.classList.remove('dragging');
+    settle();
+  }
+  ball.addEventListener('pointerup', endDrag);
+  ball.addEventListener('pointercancel', endDrag);
+
+  labelLeft.addEventListener('click', () => { bounds(); setActiveMarket('over15'); springTo(leftX); });
+  labelRight.addEventListener('click', () => { bounds(); setActiveMarket('dc12'); springTo(rightX); });
+
+  bounds();
+  x = leftX;
+  paint();
+  window.addEventListener('resize', bounds);
+}
+
+setupMarketToggle();
 renderCarousel();
 </script>
 </body>
