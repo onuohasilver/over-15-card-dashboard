@@ -308,13 +308,14 @@ function crestHtml(id, name) {
 }
 // "18/20" -> a 5-wide grid of dots, the first `hits` lit up. A quick visual
 // read of the empirical last-10 sample instead of asking the eye to parse text.
-function pipGridHtml(sampleStr) {
+function pipGridHtml(sampleStr, label) {
   if (!sampleStr) return '<div class="pip-grid"></div>';
   const [hitsStr, totalStr] = sampleStr.split('/');
   const hits = parseInt(hitsStr, 10) || 0, total = parseInt(totalStr, 10) || 0;
   let dots = '';
   for (let i = 0; i < total; i++) dots += `<span class="pip ${i < hits ? 'hit' : ''}"></span>`;
-  return `<div class="pip-grid" title="${sampleStr} of both sides' last 10 matches went over 1.5">${dots}</div>`;
+  const desc = label === '12' ? 'were not a draw' : label === 'o1.5' ? 'went over 1.5' : label;
+  return `<div class="pip-grid" title="${sampleStr} of both sides' last 10 matches ${desc}">${dots}</div>`;
 }
 // Every date in this app was assigned in WAT (UTC+1) -- fixtures.py and
 // sportybet_markets.py both default to that offset throughout. "Today"
@@ -402,7 +403,7 @@ function buildCard(date, day) {
         </div>
         <div class="leg-mid"><div class="leg-time">${scoreText}</div></div>
         <div class="leg-pct">${l.own_p}%</div>
-        ${pipGridHtml(l.sample_o15)}
+        ${pipGridHtml(l.sample_o15, l.sample_label || 'o1.5')}
         <div class="leg-icon" style="color:${iconColor}">${icon}</div>
       </div>
       ${l.note ? `<div class="leg-note">${l.note}</div>` : ''}
@@ -422,7 +423,7 @@ function buildCard(date, day) {
       ${ribbon}
       <div class="card-content">
         <div class="card-top">
-          <span class="set-chip">Over 1.5 &middot; ${legs.length} legs</span>
+          <span class="set-chip">${meta.market_label || 'Over 1.5'} &middot; ${legs.length} legs</span>
           <div class="stars">${starRow(avgP)}</div>
         </div>
         <div class="card-title">
